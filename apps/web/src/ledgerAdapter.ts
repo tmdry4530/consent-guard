@@ -1,6 +1,6 @@
 // MOCK ledger — append-only, sha256 hash-chained, in memory. U2 (packages/ledger)
 // will replace this with the real ledger + NEAR testnet anchoring (anchorTx).
-import type { LedgerEvent } from "../../../packages/policy/src/types";
+import type { LedgerEvent } from "@consent-guard/policy";
 
 export const GENESIS_HASH = "0".repeat(64);
 

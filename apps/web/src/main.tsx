@@ -10,6 +10,12 @@ const demo = loadDemo();
 const seed = initialState(demo.grants, demo.requests, NOW);
 append([], seed.events).then((ledger) => {
   createRoot(document.getElementById("root")!).render(
-    <App initial={seed.state} initialLedger={ledger} afterRevoke={demo.afterRevoke} startAt={NOW} />,
+    <App
+      initial={seed.state}
+      initialLedger={ledger}
+      afterRevoke={demo.afterRevoke}
+      afterExpire={demo.afterExpire}
+      startAt={NOW}
+    />,
   );
 });

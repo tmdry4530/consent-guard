@@ -1,5 +1,5 @@
 // Typed loader for the repo-root demo fixtures (bundled by Vite, loaded by tsx in tests).
-import type { DataRequest, Grant } from "../../../packages/policy/src/types";
+import type { DataRequest, Grant } from "@consent-guard/policy";
 import demoJson from "../../../fixtures/demo.json";
 import sampleJson from "../../../fixtures/sample-data.json";
 import aiJson from "../../../fixtures/ai-responses.json";
@@ -9,6 +9,8 @@ export interface DemoFixtures {
   requests: DataRequest[];
   /** grantId -> follow-up request enqueued automatically when that grant is revoked */
   afterRevoke: Record<string, DataRequest>;
+  /** grantId -> follow-up request enqueued when the demo clock passes that grant's expiresAt (`at` is re-stamped) */
+  afterExpire: Record<string, DataRequest>;
 }
 
 export interface RecordedAiResponse {

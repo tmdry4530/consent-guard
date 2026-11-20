@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { DataRequest, Grant } from "../../../packages/policy/src/types";
-import { NOW, TEN_MIN, loadDemo } from "../src/fixtures";
-import { evaluate } from "../src/policyAdapter";
+import type { DataRequest, Grant } from "@consent-guard/policy";
+import { NOW, TEN_MIN, loadDemo, sampleData } from "../src/fixtures";
+import { MASK, applyMask, evaluate } from "../src/policyAdapter";
 
 const demo = loadDemo();
 const req = (id: string): DataRequest => {
@@ -43,10 +43,14 @@ test("5. after revoking grant-card-budget the follow-up card request is denied",
   const r = evaluate(demo.afterRevoke["grant-card-budget"], revoked, NOW + 2);
   assert.equal(r.decision, "deny");
   assert.deepEqual(r.passFields, []);
+  assert.match(r.reason, /revoked/);
 });
 
-test("diet grant expired (TTL passed) → pending for sensitive dataset", () => {
-  assert.equal(evaluate(req("req-allergy-diet"), demo.grants, NOW + TEN_MIN).decision, "pending");
+test("diet grant expired at NOW+10min (TTL passed) → deny with expiry reason, even for medical_record", () => {
+  const r = evaluate(req("req-allergy-diet"), demo.grants, NOW + TEN_MIN);
+  assert.equal(r.decision, "deny");
+  assert.equal(r.grantId, "grant-allergy-diet");
+  assert.match(r.reason, /expired/);
 });
 
 test("purpose mismatch on non-sensitive dataset → deny", () => {
@@ -58,7 +62,27 @@ test("range beyond grant maxRangeDays → deny", () => {
   assert.equal(evaluate({ ...req("req-card-budget"), rangeDays: 365 }, demo.grants, NOW).decision, "deny");
 });
 
-test("field outside allow ∪ mask → no match (diagnosis on diet grant → pending)", () => {
+test("field outside allow ∪ mask → deny (diagnosis on diet grant)", () => {
   const r = evaluate({ ...req("req-allergy-diet"), fields: ["allergy", "diagnosis"] }, demo.grants, NOW);
-  assert.equal(r.decision, "pending");
+  assert.equal(r.decision, "deny");
+  assert.deepEqual(r.passFields, []);
+});
+
+test("replay via seenRequestIds: second evaluate of the same id is denied", () => {
+  const seenRequestIds = new Set<string>();
+  assert.equal(evaluate(req("req-card-budget"), demo.grants, NOW, { seenRequestIds }).decision, "allow");
+  const replay = evaluate(req("req-card-budget"), demo.grants, NOW, { seenRequestIds });
+  assert.equal(replay.decision, "deny");
+  assert.match(replay.reason, /replay/);
+});
+
+test("applyMask on card_tx rows with the card-budget allow result → merchant masked, category/amount kept", () => {
+  const result = evaluate(req("req-card-budget"), demo.grants, NOW);
+  const rows = applyMask(sampleData.card_tx, result);
+  assert.equal(rows.length, sampleData.card_tx.length);
+  rows.forEach((row, i) => {
+    assert.equal(row.merchant, MASK);
+    assert.equal(row.category, sampleData.card_tx[i].category);
+    assert.equal(row.amount, sampleData.card_tx[i].amount);
+  });
 });

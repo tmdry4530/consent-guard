@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { NOW, loadDemo } from "../src/fixtures";
-import { approvePending, initialState, rejectPending, revokeGrant, submitRequest } from "../src/state";
+import { NOW, TEN_MIN, loadDemo } from "../src/fixtures";
+import { evaluate } from "../src/policyAdapter";
+import { advanceDemoClock, approvePending, initialState, rejectPending, revokeGrant, submitRequest } from "../src/state";
 
 const demo = loadDemo();
 const decisionOf = (s: ReturnType<typeof initialState>["state"], id: string) =>
@@ -12,6 +13,7 @@ test("initial load seeds grant events first, then one decision event per request
   assert.deepEqual(events.map((e) => e.kind), ["grant", "grant", "access", "deny", "pending", "access"]);
   assert.deepEqual(events[2].fields, ["category", "amount", "merchant"]);
   assert.equal(decisionOf(state, "req-medical-full"), "pending");
+  assert.deepEqual([...state.seenRequestIds], demo.requests.map((r) => r.id));
 });
 
 test("replay: resubmitting a decided request id is ignored", () => {
@@ -30,6 +32,9 @@ test("approve pending medical → 1h grant + allow with all requested fields", (
   assert.deepEqual(entry?.result.passFields, ["allergy", "diagnosis", "notes"]);
   const g = t.state.grants.find((x) => x.id === "grant-req-medical-full");
   assert.equal(g?.expiresAt, NOW + 1000 + 60 * 60 * 1000);
+  assert.ok(t.state.seenRequestIds.has("req-medical-full"));
+  // The previous state's seen set was not mutated.
+  assert.notEqual(t.state.seenRequestIds, state.seenRequestIds);
 });
 
 test("reject pending → deny without a grant", () => {
@@ -48,4 +53,34 @@ test("revoke card grant enqueues follow-up request that is denied; second revoke
   assert.equal(t.state.requests.find((e) => e.request.id === "req-card-after-revoke")?.request.at, NOW + 5000);
   const again = revokeGrant(t.state, "grant-card-budget", NOW + 6000, demo.afterRevoke["grant-card-budget"]);
   assert.equal(again.state, t.state);
+});
+
+test("advancing the clock by 10 min expires the diet grant and denies its follow-up exactly once", () => {
+  const { state } = initialState(demo.grants, demo.requests, NOW);
+  const later = NOW + TEN_MIN;
+
+  // Before TTL: nothing to enqueue.
+  assert.equal(advanceDemoClock(state, later - 1, demo.afterExpire).state, state);
+
+  const t = advanceDemoClock(state, later, demo.afterExpire);
+  const diet = t.state.grants.find((g) => g.id === "grant-allergy-diet");
+  assert.ok(diet && diet.revokedAt === undefined && diet.expiresAt <= later);
+  assert.deepEqual(t.events.map((e) => [e.kind, e.refId]), [["deny", "req-allergy-after-expire"]]);
+  const followUp = t.state.requests.find((e) => e.request.id === "req-allergy-after-expire");
+  assert.equal(followUp?.result.decision, "deny");
+  assert.equal(followUp?.request.at, later);
+  assert.match(followUp?.result.reason ?? "", /grant-allergy-diet.*expired/);
+  // History is not rewritten.
+  assert.equal(decisionOf(t.state, "req-allergy-diet"), "allow");
+
+  const again = advanceDemoClock(t.state, later + TEN_MIN, demo.afterExpire);
+  assert.equal(again.state, t.state);
+  assert.deepEqual(again.events, []);
+  assert.equal(again.state.requests.filter((e) => e.request.id === "req-allergy-after-expire").length, 1);
+});
+
+test("direct evaluate of the after-expire follow-up at NOW+10min is deny", () => {
+  const r = evaluate(demo.afterExpire["grant-allergy-diet"], demo.grants, NOW + TEN_MIN);
+  assert.equal(r.decision, "deny");
+  assert.match(r.reason, /expired/);
 });

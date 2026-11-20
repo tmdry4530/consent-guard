@@ -69,5 +69,15 @@
       "rangeDays": 90,
       "at": 1795172400000
     }
+  },
+  "afterExpire": {
+    "grant-allergy-diet": {
+      "id": "req-allergy-after-expire",
+      "agentId": "diet-agent",
+      "dataset": "medical_record",
+      "fields": ["allergy"],
+      "purpose": "diet_recommendation",
+      "at": 1795173000000
+    }
   }
 }
