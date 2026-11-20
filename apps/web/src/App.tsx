@@ -5,6 +5,8 @@ import { append, list, type LedgerInput } from "@consent-guard/ledger/adapter";
 import { verifyChain, type VerifyResult } from "@consent-guard/ledger/core";
 import type { ConsentProxy } from "@consent-guard/proxy";
 import { awaitingAi, fetchAi, withAi } from "./ai";
+// Explicit extension: on case-insensitive filesystems "./AnchorStatus" could resolve to ./anchorStatus.ts.
+import { AnchorStatus } from "./AnchorStatus.tsx";
 import { TEN_MIN, sampleData } from "./fixtures";
 import { applyMask, MASK } from "./policyAdapter";
 import {
@@ -271,6 +273,7 @@ export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, s
                   : `해시 체인 손상 ✗ #${chain.index} ${chain.reason}`}
             </span>
           </h2>
+          <AnchorStatus liveCount={ledger.length} />
           <div className="scroll">
             <table className="table">
               <thead>
