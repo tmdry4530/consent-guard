@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { NOW, TEN_MIN, loadDemo } from "../src/fixtures";
 import { evaluate } from "../src/policyAdapter";
-import { advanceDemoClock, approvePending, initialState, rejectPending, revokeGrant, submitRequest } from "../src/state";
+import { advanceDemoClock, approvePending, canRevokeGrant, initialState, rejectPending, revokeGrant, submitRequest } from "../src/state";
 
 const demo = loadDemo();
 const decisionOf = (s: ReturnType<typeof initialState>["state"], id: string) =>
@@ -83,4 +83,23 @@ test("direct evaluate of the after-expire follow-up at NOW+10min is deny", () =>
   const r = evaluate(demo.afterExpire["grant-allergy-diet"], demo.grants, NOW + TEN_MIN);
   assert.equal(r.decision, "deny");
   assert.match(r.reason, /expired/);
+});
+
+test("revoke action is offered only for active grants; expired diet grant after +10 min is not revocable", () => {
+  const { state } = initialState(demo.grants, demo.requests, NOW);
+  const grant = (s: typeof state, id: string) => s.grants.find((g) => g.id === id)!;
+  assert.equal(canRevokeGrant(grant(state, "grant-card-budget"), NOW), true);
+  assert.equal(canRevokeGrant(grant(state, "grant-allergy-diet"), NOW), true);
+
+  const later = NOW + TEN_MIN;
+  const t = advanceDemoClock(state, later, demo.afterExpire);
+  assert.equal(canRevokeGrant(grant(t.state, "grant-allergy-diet"), later), false);
+  assert.equal(canRevokeGrant(grant(t.state, "grant-card-budget"), later), true);
+  // Safety net: revoking the expired grant is a no-op.
+  const r = revokeGrant(t.state, "grant-allergy-diet", later, demo.afterRevoke["grant-allergy-diet"]);
+  assert.equal(r.state, t.state);
+  assert.deepEqual(r.events, []);
+  // Card grant still revokes normally.
+  const rc = revokeGrant(t.state, "grant-card-budget", later, demo.afterRevoke["grant-card-budget"]);
+  assert.equal(canRevokeGrant(grant(rc.state, "grant-card-budget"), later), false);
 });

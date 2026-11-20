@@ -10,6 +10,7 @@ import { applyMask, MASK } from "./policyAdapter";
 import {
   advanceDemoClock,
   approvePending,
+  canRevokeGrant,
   rejectPending,
   revokeGrant,
   type AppState,
@@ -241,16 +242,18 @@ export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, s
                       만료 {dateTimeFmt.format(g.expiresAt)} · {revoked ? `철회 ${timeFmt.format(g.revokedAt!)}` : remaining(g.expiresAt - now)}
                     </span>
                   </div>
-                  <div className="actions">
-                    <button
-                      className="btn revoke"
-                      data-testid={`revoke-${g.id}`}
-                      disabled={revoked}
-                      onClick={() => apply((s, at) => revokeGrant(s, g.id, at, followUpFor(g)))}
-                    >
-                      철회
-                    </button>
-                  </div>
+                  {!expired && (
+                    <div className="actions">
+                      <button
+                        className="btn revoke"
+                        data-testid={`revoke-${g.id}`}
+                        disabled={!canRevokeGrant(g, now)}
+                        onClick={() => apply((s, at) => revokeGrant(s, g.id, at, followUpFor(g)))}
+                      >
+                        철회
+                      </button>
+                    </div>
+                  )}
                 </li>
               );
             })}

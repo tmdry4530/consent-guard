@@ -120,13 +120,19 @@ export function rejectPending(state: AppState, requestId: string, now: number): 
   };
 }
 
+/** A grant can be revoked only while it is active: not already revoked and not past its TTL. */
+export function canRevokeGrant(g: Grant, now: number): boolean {
+  return g.revokedAt === undefined && g.expiresAt > now;
+}
+
 /**
- * Revoke a grant (revokedAt = now). If `followUp` is given (the agent's next request for
- * the same data), it is enqueued at `now` and evaluated against the updated grants.
+ * Revoke an active grant (revokedAt = now); revoked or expired grants are a no-op. If `followUp`
+ * is given (the agent's next request for the same data), it is enqueued at `now` and evaluated
+ * against the updated grants.
  */
 export function revokeGrant(state: AppState, grantId: string, now: number, followUp?: DataRequest): Transition {
   const target = state.grants.find((g) => g.id === grantId);
-  if (!target || target.revokedAt !== undefined) return { state, events: [] };
+  if (!target || !canRevokeGrant(target, now)) return { state, events: [] };
   const revoked: Grant = { ...target, revokedAt: now };
   const next: AppState = { ...state, grants: state.grants.map((g) => (g.id === grantId ? revoked : g)) };
   const events = [grantEvent("revoke", revoked, now)];
