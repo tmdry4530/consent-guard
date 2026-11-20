@@ -1,0 +1,20 @@
+{
+  "name": "@consent-guard/ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./core": "./src/core.js",
+    "./adapter": "./src/adapter.js"
+  },
+  "scripts": {
+    "test": "node --test --test-reporter=spec \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p .",
+    "test:contract": "cd contracts/anchor && cargo test",
+    "build:contract": "cd contracts/anchor && cargo near build non-reproducible-wasm --no-abi && cp target/near/consent_guard_anchor.wasm res/",
+    "deploy:dry-run": "node scripts/deploy.mjs --dry-run",
+    "anchor:dry-run": "node scripts/anchor.mjs --dry-run",
+    "verify:serve": "node scripts/serve-verify.mjs"
+  }
+}
