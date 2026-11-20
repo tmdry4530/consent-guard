@@ -10,7 +10,8 @@
     "test": "tsx --test test/*.test.ts",
     "screenshot": "node scripts/screenshot.mjs",
     "e2e": "playwright test",
-    "demo:video": "node scripts/record-demo.mjs"
+    "demo:video": "node scripts/record-demo.mjs",
+    "demo:screens": "node scripts/capture-screens.mjs"
   },
   "dependencies": {
     "@consent-guard/ledger": "*",
