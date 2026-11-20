@@ -21,6 +21,7 @@ import {
   sendLiveTransaction,
 } from "../src/near.ts";
 import { parseArgs, printSummary, writeGate } from "./cli-args.mjs";
+import { runNear, extractTxHash } from "./run-near.mjs";
 
 const flags = parseArgs();
 const env = process.env;
@@ -57,8 +58,9 @@ printSummary(gate.live ? "LIVE DEPLOY" : "DRY RUN — no transaction sent", [
 if (!gate.live) {
   console.log(`
 Prerequisite (EL, at integration): the contract account must exist, e.g.
-  near account create-account fund-myself ${contractId} '3 NEAR' autogenerate-new-keypair save-to-legacy-keychain sign-as ${PARENT_ACCOUNT_ID} network-config testnet sign-with-legacy-keychain send
-Then: CONSENT_GUARD_ALLOW_TESTNET_WRITE=1 node scripts/deploy.mjs --execute (requires near-api-js@^7).`);
+  CONSENT_GUARD_ALLOW_TESTNET_WRITE=1 node scripts/create-account.mjs --execute
+Then: CONSENT_GUARD_ALLOW_TESTNET_WRITE=1 node scripts/deploy.mjs --execute
+(deploy --execute uses near-api-js if installed, otherwise the near CLI with the legacy keychain; private keys are never printed).`);
   if (gate.refusal) {
     console.error(`\n${gate.refusal}`);
     process.exit(1);
@@ -67,14 +69,33 @@ Then: CONSENT_GUARD_ALLOW_TESTNET_WRITE=1 node scripts/deploy.mjs --execute (req
 }
 
 if (!wasm) throw new Error(`wasm not found: ${wasmPath}`);
-const { txHash } = await sendLiveTransaction({
-  rpcUrl,
-  signerId: contractId,
-  credentialsPath,
-  receiverId: contractId,
-  buildActions: (near) => [
-    near.actions.deployContract(wasm),
-    near.actions.functionCall("new", initArgs, near.teraToGas("30"), 0n),
-  ],
-});
-console.log(JSON.stringify({ contract: contractId, owner, txHash }));
+try {
+  const { txHash } = await sendLiveTransaction({
+    rpcUrl,
+    signerId: contractId,
+    credentialsPath,
+    receiverId: contractId,
+    buildActions: (near) => [
+      near.actions.deployContract(wasm),
+      near.actions.functionCall("new", initArgs, near.teraToGas("30"), 0n),
+    ],
+  });
+  console.log(JSON.stringify({ contract: contractId, owner, txHash }));
+} catch (e) {
+  if (!String(e.message || e).includes("near-api-js")) throw e;
+  console.log("near-api-js not installed; falling back to near CLI (legacy keychain, no key printed)");
+  const args = [
+    "contract", "deploy", contractId,
+    "use-file", wasmPath,
+    "with-init-call", "new", "json-args", JSON.stringify(initArgs),
+    "prepaid-gas", "30 TeraGas",
+    "attached-deposit", "0 NEAR",
+    "network-config", NETWORK,
+    "sign-with-legacy-keychain",
+    "send",
+  ];
+  const result = await runNear(args);
+  console.log(result.text);
+  if (result.code !== 0) process.exit(result.code || 1);
+  console.log(JSON.stringify({ contract: contractId, owner, txHash: extractTxHash(result.text) }));
+}

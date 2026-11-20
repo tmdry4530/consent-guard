@@ -15,8 +15,9 @@ import { fileURLToPath } from "node:url";
 import { createAnchorAdapter } from "../src/anchor.ts";
 import { nodeSha256Hex } from "../src/index.ts";
 import { headHash, parseEventsJson, verifyChain } from "../src/core.js";
-import { DEFAULT_CONTRACT_ID, DEFAULT_RPC_URL } from "../src/near.ts";
+import { DEFAULT_CONTRACT_ID, DEFAULT_RPC_URL, NETWORK, PARENT_ACCOUNT_ID } from "../src/near.ts";
 import { parseArgs, printSummary, writeGate } from "./cli-args.mjs";
+import { runNear, extractTxHash } from "./run-near.mjs";
 
 const flags = parseArgs();
 const env = process.env;
@@ -74,8 +75,34 @@ if (flags.read) {
   }
 }
 
+if (call.contractId === PARENT_ACCOUNT_ID) {
+  console.error(`refusing: will not call anchor() on ${PARENT_ACCOUNT_ID} (TEE receipts contract).`);
+  process.exit(2);
+}
+
 if (gate.refusal) {
   console.error(`\n${gate.refusal}`);
   process.exit(1);
 }
-if (gate.live) console.log(JSON.stringify(await adapter.anchor(head, count)));
+if (gate.live) {
+  try {
+    console.log(JSON.stringify(await adapter.anchor(head, count)));
+  } catch (e) {
+    if (!String(e.message || e).includes("near-api-js")) throw e;
+    console.log("near-api-js not installed; falling back to near CLI (legacy keychain, no key printed)");
+    const args = [
+      "contract", "call-function", "as-transaction",
+      call.contractId, "anchor", "json-args", JSON.stringify(call.args),
+      "prepaid-gas", "30 TeraGas",
+      "attached-deposit", "0 NEAR",
+      "sign-as", call.signerId,
+      "network-config", NETWORK,
+      "sign-with-legacy-keychain",
+      "send",
+    ];
+    const result = await runNear(args);
+    console.log(result.text);
+    if (result.code !== 0) process.exit(result.code || 1);
+    console.log(JSON.stringify({ ...call, dryRun: false, txHash: extractTxHash(result.text) }));
+  }
+}
