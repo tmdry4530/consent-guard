@@ -13,6 +13,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { RPC_URL, mockAnchorRpc, readAnchorStatus, waitForAnchorStatus } from "../e2e/anchorMock.ts";
+import { resolveChromePath } from "./chromePath.mjs";
 
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(webDir, "../..");
@@ -85,6 +86,55 @@ async function waitForServer(url, ms) {
   throw new Error(`vite did not come up at ${url}`);
 }
 
+// Slide-only emphasis for scene 2 (raw account deny). Injected at screenshot time, removed right after,
+// so the other scenes render exactly as the app does.
+const HIGHLIGHT_CSS = `
+  [data-testid="request-feed"] li.item:not([data-cg-hl]) { opacity: 0.35; filter: blur(0.6px); }
+  [data-cg-hl] { position: relative; z-index: 2; }
+  li[data-cg-hl] {
+    outline: 3px solid #e5484d; outline-offset: 2px; border-radius: 8px;
+    box-shadow: 0 0 0 6px rgba(229, 72, 77, 0.25), 0 0 24px 6px rgba(229, 72, 77, 0.45);
+  }
+  tr[data-cg-hl] > td { background: rgba(229, 72, 77, 0.16); }
+  tr[data-cg-hl] { outline: 2px solid #e5484d; outline-offset: -2px; }
+  #cg-hl-callout {
+    position: fixed; z-index: 1000; pointer-events: none;
+    padding: 4px 12px; border-radius: 999px; background: #e5484d; color: #fff;
+    font: 700 14px/1.4 system-ui, sans-serif; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35); white-space: nowrap;
+  }
+`;
+
+async function withDenyHighlight(page, fn) {
+  const style = await page.addStyleTag({ content: HIGHLIGHT_CSS });
+  try {
+    await page.evaluate(() => {
+      const feed = document.querySelector('[data-testid="feed-req-account-raw"]');
+      if (!feed) throw new Error("feed-req-account-raw not found");
+      const row = [...document.querySelectorAll('[data-testid="audit-log"] tbody tr')].find((tr) => {
+        const td = tr.querySelectorAll("td");
+        return tr.querySelector(".kind.deny") && td[3]?.textContent === "tax-agent" && td[4]?.textContent === "bank_account";
+      });
+      if (!row) throw new Error("audit deny row (tax-agent / bank_account) not found");
+      feed.setAttribute("data-cg-hl", "");
+      row.setAttribute("data-cg-hl", "");
+      const r = feed.getBoundingClientRect();
+      const callout = document.createElement("div");
+      callout.id = "cg-hl-callout";
+      callout.textContent = "원문 거부";
+      document.body.append(callout);
+      callout.style.left = `${Math.round(r.right - callout.offsetWidth - 8)}px`;
+      callout.style.top = `${Math.round(r.top - callout.offsetHeight / 2 - 2)}px`;
+    });
+    await fn();
+  } finally {
+    await page.evaluate(() => {
+      document.getElementById("cg-hl-callout")?.remove();
+      for (const el of document.querySelectorAll("[data-cg-hl]")) el.removeAttribute("data-cg-hl");
+    });
+    await style.evaluate((el) => el.remove());
+  }
+}
+
 const vite = spawn(join(repoRoot, "node_modules/.bin/vite"), ["--host", "127.0.0.1", "--port", String(PORT), "--strictPort"], {
   cwd: webDir,
   stdio: ["ignore", "ignore", "inherit"],
@@ -95,7 +145,7 @@ let browser;
 try {
   await waitForServer(BASE_URL, 60_000);
   browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH ?? "/usr/bin/google-chrome",
+    executablePath: resolveChromePath(),
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
@@ -141,7 +191,7 @@ try {
   // 2. raw account deny in frame
   await byId("feed-req-account-raw").scrollIntoViewIfNeeded();
   await expectText(badge("req-account-raw"), "거부", "account badge");
-  await shoot("02-deny-raw");
+  await withDenyHighlight(page, () => shoot("02-deny-raw"));
 
   // 3. approve medical
   await byId("approve-req-medical-full").scrollIntoViewIfNeeded();
