@@ -16,7 +16,7 @@ npm run demo:cli     # 데모 장면 1~5를 터미널에 출력, 마지막에 "l
 npm run e2e          # Playwright 브라우저 e2e: 데모 5장면 순서대로 5개 테스트 (1280×800)
 ```
 
-`npm run e2e`는 오프라인으로 실행됩니다. Playwright가 `127.0.0.1:4173`에 Vite 개발 서버를 직접 띄웠다 내리고(`E2E_PORT`로 변경; 이미 떠 있는 서버는 재사용하므로 `verify:serve`와 동시에 돌리지 말 것), 테스트넷 `read_anchor` RPC 호출은 `page.route`로 가로채 데모 최종 장부 헤드(11건)를 돌려줍니다. 브라우저는 다운로드하지 않고 시스템 Chrome(`/usr/bin/google-chrome`, `CHROME_PATH`로 변경)을 씁니다.
+`npm run e2e`는 오프라인으로 실행됩니다. Playwright가 `127.0.0.1:4174`에 Vite 개발 서버를 직접 띄웠다 내립니다(`E2E_PORT`로 변경). `--strictPort`와 `reuseExistingServer: false`라서 해당 포트가 이미 쓰이면 잘못된 페이지를 치지 않고 바로 실패합니다. `verify:serve`는 `127.0.0.1:4173`을 쓰므로 e2e와 동시에 돌려도 됩니다. 테스트넷 `read_anchor` RPC 호출은 `page.route`로 가로채 데모 최종 장부 헤드(11건)를 돌려줍니다. 브라우저는 다운로드하지 않고 시스템 Chrome(`/usr/bin/google-chrome`, `CHROME_PATH`로 변경)을 씁니다.
 
 웹 데모 (Vite 개발 서버, http://localhost:5173/):
 
