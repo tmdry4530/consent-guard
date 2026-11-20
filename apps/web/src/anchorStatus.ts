@@ -1,23 +1,22 @@
-// On-chain anchor check for the audit log. Compares the NEAR testnet `read_anchor` head against the
-// bundled sample snapshot (the chain that was actually anchored), NOT the live demo ledger, which is
-// seeded from fixtures/demo.json and grows as scenes progress.
-import type { LedgerEvent } from "@consent-guard/policy";
-import { fetchAnchor, verifyAgainstAnchor, type AnchorView, type FetchLike } from "@consent-guard/ledger/core";
-import sampleChainJson from "../../../packages/ledger/verify/fixtures/sample-chain.json";
+// On-chain anchor check for the audit log. Reads the NEAR testnet `read_anchor` view once, then compares
+// it with the LIVE demo ledger (count + current head) on every render. The anchored head is the final
+// head of the full 5-scene demo (see demoScenario.ts), so the badge turns to "일치" exactly when the
+// demo reaches the end.
+import { fetchAnchor, type AnchorView, type FetchLike } from "@consent-guard/ledger/core";
 
-/** The 5-event sample chain anchored on testnet (packages/ledger/verify/fixtures/sample-chain.json). */
-export const SAMPLE_SNAPSHOT = sampleChainJson as LedgerEvent[];
+/** Result of the single RPC read. `anchor: null` = the contract answered but has no anchor yet. */
+export type AnchorRead = { kind: "read"; anchor: AnchorView | null } | { kind: "unavailable"; reason: string };
 
-export type AnchorStatusKind = "match" | "mismatch" | "unavailable";
+export type AnchorStatusKind = "before" | "match" | "mismatch" | "unavailable";
 
 export interface AnchorStatusResult {
   kind: AnchorStatusKind;
+  /** Headline shown in the badge. */
+  label: string;
   /** Short Korean reason for the verdict. */
   reason: string;
-  compared: "sample-snapshot";
-  snapshotCount: number;
-  /** Recomputed head of the snapshot, when the snapshot chain is valid. */
-  head?: string;
+  liveCount: number;
+  liveHead?: string;
   /** On-chain values, when the RPC answered with an anchor. */
   anchorHead?: string;
   count?: number;
@@ -25,33 +24,29 @@ export interface AnchorStatusResult {
   timestampMs?: number;
 }
 
+export const LABEL_MATCH = "현재 장부 = 온체인 앵커 일치 ✓";
+export const LABEL_MISMATCH = "온체인 앵커 불일치 ✗";
+export const LABEL_UNAVAILABLE = "앵커 확인 불가";
+export const LABEL_CHECKING = "온체인 앵커 확인 중…";
+export const labelBefore = (anchorCount: number, liveCount: number) => `${anchorCount}건 중 ${liveCount}건 · 앵커 전`;
+
 /** Minimal fetch shape: global fetch fits; tests pass mocks. */
 export type AnchorFetch = (
   url: string,
   init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; json(): Promise<unknown> }>;
 
-export interface CheckAnchorOptions {
+export interface ReadAnchorOptions {
   fetchImpl: AnchorFetch;
   rpcUrl: string;
   contractId: string;
   timeoutMs: number;
-  snapshot?: readonly LedgerEvent[];
 }
 
 const short = (hex: string) => `${hex.slice(0, 8)}…`;
 
-/** Reads the on-chain anchor and verifies the snapshot against it. Never throws. */
-export async function checkAnchorStatus({
-  fetchImpl,
-  rpcUrl,
-  contractId,
-  timeoutMs,
-  snapshot = SAMPLE_SNAPSHOT,
-}: CheckAnchorOptions): Promise<AnchorStatusResult> {
-  const base = { compared: "sample-snapshot", snapshotCount: snapshot.length } as const;
-
-  let anchor: AnchorView | null;
+/** One `read_anchor` view call with a hard timeout. Never throws. */
+export async function readAnchorStatus({ fetchImpl, rpcUrl, contractId, timeoutMs }: ReadAnchorOptions): Promise<AnchorRead> {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
@@ -63,51 +58,66 @@ export async function checkAnchorStatus({
     });
     // Race as well as abort, so a fetch that ignores the signal still cannot hang the badge.
     const fetchWithSignal: FetchLike = (url, init) => fetchImpl(url, { ...init, signal: controller.signal });
-    anchor = await Promise.race([fetchAnchor({ rpcUrl, contractId, fetchImpl: fetchWithSignal }), timedOut]);
+    const anchor = await Promise.race([fetchAnchor({ rpcUrl, contractId, fetchImpl: fetchWithSignal }), timedOut]);
+    return { kind: "read", anchor };
   } catch (e) {
-    return { ...base, kind: "unavailable", reason: unavailableReason(e, controller.signal.aborted, timeoutMs) };
+    return { kind: "unavailable", reason: unavailableReason(e, controller.signal.aborted, timeoutMs) };
   } finally {
     clearTimeout(timer);
   }
+}
 
-  if (anchor === null) return { ...base, kind: "mismatch", reason: "온체인에 기록된 앵커가 없습니다" };
-  const onChain = {
+export interface LiveLedger {
+  count: number;
+  /** Head hash of the live ledger; undefined when empty. */
+  head?: string;
+  /** Result of the live chain's own verifyChain; a broken chain can never match. */
+  chainOk?: boolean;
+}
+
+/** Pure verdict: live demo ledger vs the on-chain anchor. */
+export function compareLive(read: AnchorRead, live: LiveLedger): AnchorStatusResult {
+  const base = { liveCount: live.count, liveHead: live.head };
+  if (read.kind === "unavailable") return { ...base, kind: "unavailable", label: LABEL_UNAVAILABLE, reason: read.reason };
+  const { anchor } = read;
+  if (anchor === null) {
+    return { ...base, kind: "mismatch", label: LABEL_MISMATCH, reason: "온체인에 기록된 앵커가 없습니다" };
+  }
+  const r = {
+    ...base,
     anchorHead: anchor.headHash,
     count: anchor.count,
     blockHeight: anchor.blockHeight,
     timestampMs: anchor.timestampMs,
   };
-
-  try {
-    const check = await verifyAgainstAnchor(snapshot, { headHash: anchor.headHash, count: anchor.count });
-    const head = check.head;
-    switch (check.status) {
-      case "verified":
-        return { ...base, ...onChain, head, kind: "match", reason: `샘플 장부 ${snapshot.length}건 헤드 해시·건수 일치` };
-      case "head-mismatch":
-        return {
-          ...base,
-          ...onChain,
-          head,
-          kind: "mismatch",
-          reason: `헤드 해시 불일치 (스냅샷 ${short(head ?? "")} ≠ 온체인 ${short(anchor.headHash)})`,
-        };
-      case "count-mismatch":
-        return {
-          ...base,
-          ...onChain,
-          head,
-          kind: "mismatch",
-          reason: `건수 불일치 (스냅샷 ${snapshot.length}건 ≠ 온체인 ${anchor.count}건)`,
-        };
-      case "chain-invalid":
-        return { ...base, ...onChain, kind: "mismatch", reason: `스냅샷 해시 체인 손상 (#${check.index})` };
-      default:
-        return { ...base, ...onChain, head, kind: "mismatch", reason: check.reason };
-    }
-  } catch (e) {
-    return { ...base, ...onChain, kind: "unavailable", reason: `검증 실패: ${message(e)}` };
+  if (live.chainOk === false) {
+    return { ...r, kind: "mismatch", label: LABEL_MISMATCH, reason: "현재 장부의 해시 체인이 손상되었습니다" };
   }
+  if (live.count < anchor.count) {
+    return {
+      ...r,
+      kind: "before",
+      label: labelBefore(anchor.count, live.count),
+      reason: `데모를 끝까지 진행하면 ${anchor.count}건째에 온체인 앵커와 비교합니다`,
+    };
+  }
+  if (live.count > anchor.count) {
+    return {
+      ...r,
+      kind: "mismatch",
+      label: LABEL_MISMATCH,
+      reason: `건수 초과 (현재 장부 ${live.count}건 > 온체인 앵커 ${anchor.count}건)`,
+    };
+  }
+  if (live.head !== anchor.headHash) {
+    return {
+      ...r,
+      kind: "mismatch",
+      label: LABEL_MISMATCH,
+      reason: `헤드 해시 불일치 (현재 장부 ${short(live.head ?? "")} ≠ 온체인 ${short(anchor.headHash)})`,
+    };
+  }
+  return { ...r, kind: "match", label: LABEL_MATCH, reason: `${anchor.count}건 · 헤드 ${short(anchor.headHash)}` };
 }
 
 function message(e: unknown): string {

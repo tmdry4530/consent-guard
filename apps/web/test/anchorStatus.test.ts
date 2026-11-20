@@ -1,10 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { ViewRequest } from "@consent-guard/ledger/core";
-import { checkAnchorStatus, SAMPLE_SNAPSHOT, type AnchorFetch } from "../src/anchorStatus";
-import { DEFAULT_CONTRACT_ID, resolveAnchorConfig } from "../src/anchorConfig";
+import {
+  LABEL_MATCH,
+  LABEL_MISMATCH,
+  LABEL_UNAVAILABLE,
+  compareLive,
+  labelBefore,
+  readAnchorStatus,
+  type AnchorFetch,
+  type AnchorRead,
+} from "../src/anchorStatus";
+import {
+  DEFAULT_CONTRACT_ID,
+  EXPECTED_ANCHOR_BLOCK,
+  EXPECTED_FINAL_COUNT,
+  EXPECTED_FINAL_HEAD,
+  resolveAnchorConfig,
+} from "../src/anchorConfig";
 
-const SAMPLE_HEAD = "85c3a623b71c66b803e8dfdb20ff54fa09c3ceac8f2deca58a9b7d637c4228ce";
+const HEAD = EXPECTED_FINAL_HEAD;
+const N = EXPECTED_FINAL_COUNT;
+const OTHER = "ab".repeat(32);
 const RPC = "https://rpc.example.test";
 
 /** A NEAR RPC call_function response carrying `value` as JSON bytes. */
@@ -16,84 +33,98 @@ function respond(body: unknown, status = 200): AnchorFetch {
   return async () => ({ ok: status >= 200 && status < 300, status, json: async () => body });
 }
 
-const anchor = (head_hash: string, count: number) =>
-  rpcResult({ head_hash, count, block_height: 222_333_444, timestamp_ms: 1_795_165_500_000 });
+const anchorBody = (head_hash: string, count: number) =>
+  rpcResult({ head_hash, count, block_height: EXPECTED_ANCHOR_BLOCK, timestamp_ms: 1_795_182_112_579 });
 
-const run = (fetchImpl: AnchorFetch, timeoutMs = 5000) =>
-  checkAnchorStatus({ fetchImpl, rpcUrl: RPC, contractId: DEFAULT_CONTRACT_ID, timeoutMs });
+const read = (fetchImpl: AnchorFetch, timeoutMs = 5000) =>
+  readAnchorStatus({ fetchImpl, rpcUrl: RPC, contractId: DEFAULT_CONTRACT_ID, timeoutMs });
 
-test("match: on-chain head and count equal the bundled 5-event sample snapshot", async () => {
+const onChain: AnchorRead = {
+  kind: "read",
+  anchor: { headHash: HEAD, count: N, blockHeight: EXPECTED_ANCHOR_BLOCK, timestampMs: 1_795_182_112_579 },
+};
+
+test("read: sends a read_anchor view call to the contract and parses the anchor", async () => {
   let sent: { url: string; body: ViewRequest } | undefined;
-  const r = await run(async (url, init) => {
+  const r = await read(async (url, init) => {
     sent = { url, body: JSON.parse(init.body) };
-    return { ok: true, status: 200, json: async () => anchor(SAMPLE_HEAD, 5) };
+    return { ok: true, status: 200, json: async () => anchorBody(HEAD, N) };
   });
-  assert.equal(r.kind, "match");
-  assert.equal(r.compared, "sample-snapshot");
-  assert.equal(r.snapshotCount, 5);
-  assert.equal(SAMPLE_SNAPSHOT.length, 5);
-  assert.equal(r.head, SAMPLE_HEAD);
-  assert.equal(r.anchorHead, SAMPLE_HEAD);
-  assert.equal(r.blockHeight, 222_333_444);
+  assert.deepEqual(r, onChain);
+  assert.equal(sent?.url, RPC);
+  assert.equal(sent?.body.method, "query");
+  assert.equal(sent?.body.params.request_type, "call_function");
   assert.equal(sent?.body.params.account_id, DEFAULT_CONTRACT_ID);
   assert.equal(sent?.body.params.method_name, "read_anchor");
 });
 
-test("mismatch: wrong head", async () => {
-  const r = await run(respond(anchor("ab".repeat(32), 5)));
+test("before: live ledger shorter than the anchor shows '{anchor}건 중 {live}건 · 앵커 전'", () => {
+  const r = compareLive(onChain, { count: 6, head: OTHER, chainOk: true });
+  assert.equal(r.kind, "before");
+  assert.equal(r.label, `${N}건 중 6건 · 앵커 전`);
+  assert.equal(r.label, labelBefore(N, 6));
+  assert.equal(r.blockHeight, EXPECTED_ANCHOR_BLOCK);
+});
+
+test("match: same count and same head", () => {
+  const r = compareLive(onChain, { count: N, head: HEAD, chainOk: true });
+  assert.equal(r.kind, "match");
+  assert.equal(r.label, LABEL_MATCH);
+  assert.equal(r.label, "현재 장부 = 온체인 앵커 일치 ✓");
+  assert.equal(r.anchorHead, HEAD);
+  assert.equal(r.blockHeight, EXPECTED_ANCHOR_BLOCK);
+});
+
+test("mismatch: same count, different head", () => {
+  const r = compareLive(onChain, { count: N, head: OTHER, chainOk: true });
   assert.equal(r.kind, "mismatch");
+  assert.equal(r.label, LABEL_MISMATCH);
   assert.match(r.reason, /헤드 해시 불일치/);
-  assert.equal(r.head, SAMPLE_HEAD);
-  assert.equal(r.anchorHead, "ab".repeat(32));
-  assert.equal(r.blockHeight, 222_333_444);
 });
 
-test("mismatch: right head, wrong count", async () => {
-  const r = await run(respond(anchor(SAMPLE_HEAD, 6)));
+test("mismatch: live ledger longer than the anchor", () => {
+  const r = compareLive(onChain, { count: N + 1, head: OTHER, chainOk: true });
   assert.equal(r.kind, "mismatch");
-  assert.match(r.reason, /건수 불일치.*5건.*6건/);
+  assert.match(r.reason, new RegExp(`건수 초과.*${N + 1}건.*${N}건`));
 });
 
-test("mismatch: tampered snapshot chain is reported as chain damage, not a match", async () => {
-  const tampered = SAMPLE_SNAPSHOT.map((e, i) => (i === 2 ? { ...e, agentId: "evil-agent" } : e));
-  const r = await checkAnchorStatus({
-    fetchImpl: respond(anchor(SAMPLE_HEAD, 5)),
-    rpcUrl: RPC,
-    contractId: DEFAULT_CONTRACT_ID,
-    timeoutMs: 5000,
-    snapshot: tampered,
-  });
+test("mismatch: a broken live chain never matches, even with the right head", () => {
+  const r = compareLive(onChain, { count: N, head: HEAD, chainOk: false });
   assert.equal(r.kind, "mismatch");
-  assert.match(r.reason, /스냅샷 해시 체인 손상/);
+  assert.match(r.reason, /해시 체인이 손상/);
 });
 
 test("mismatch: contract has no anchor yet (read_anchor -> null)", async () => {
-  const r = await run(respond(rpcResult(null)));
-  assert.equal(r.kind, "mismatch");
+  const r = await read(respond(rpcResult(null)));
+  assert.deepEqual(r, { kind: "read", anchor: null });
+  assert.equal(compareLive(r, { count: N, head: HEAD }).kind, "mismatch");
 });
 
 test("unavailable: HTTP failure", async () => {
-  const r = await run(respond({}, 503));
+  const r = await read(respond({}, 503));
   assert.equal(r.kind, "unavailable");
-  assert.match(r.reason, /503/);
+  const s = compareLive(r, { count: N, head: HEAD });
+  assert.equal(s.kind, "unavailable");
+  assert.equal(s.label, LABEL_UNAVAILABLE);
+  assert.match(s.reason, /503/);
 });
 
 test("unavailable: JSON-RPC error body", async () => {
-  const r = await run(respond({ jsonrpc: "2.0", id: "x", error: { cause: { name: "UNKNOWN_ACCOUNT" } } }));
+  const r = await read(respond({ jsonrpc: "2.0", id: "x", error: { cause: { name: "UNKNOWN_ACCOUNT" } } }));
   assert.equal(r.kind, "unavailable");
-  assert.match(r.reason, /RPC 응답 오류/);
+  assert.match(compareLive(r, { count: 0 }).reason, /RPC 응답 오류/);
 });
 
 test("unavailable: network error / offline", async () => {
-  const r = await run(async () => {
+  const r = await read(async () => {
     throw new TypeError("Failed to fetch");
   });
   assert.equal(r.kind, "unavailable");
-  assert.match(r.reason, /네트워크 오류/);
+  assert.match(compareLive(r, { count: 0 }).reason, /네트워크 오류/);
 });
 
 test("unavailable: aborted request", async () => {
-  const r = await run(async () => {
+  const r = await read(async () => {
     throw new DOMException("The operation was aborted.", "AbortError");
   });
   assert.equal(r.kind, "unavailable");
@@ -102,12 +133,12 @@ test("unavailable: aborted request", async () => {
 test("unavailable: timeout aborts the request even if fetch never settles", async () => {
   let signal: AbortSignal | undefined;
   const started = Date.now();
-  const r = await run((_url, init) => {
+  const r = await read((_url, init) => {
     signal = init.signal;
     return new Promise(() => {});
   }, 50);
   assert.equal(r.kind, "unavailable");
-  assert.match(r.reason, /시간 초과/);
+  assert.match(compareLive(r, { count: 0 }).reason, /시간 초과/);
   assert.equal(signal?.aborted, true);
   assert.ok(Date.now() - started < 2000);
 });
@@ -115,7 +146,7 @@ test("unavailable: timeout aborts the request even if fetch never settles", asyn
 test("config: defaults, env overrides, and ?rpc/&contract runtime overrides", () => {
   const d = resolveAnchorConfig();
   assert.equal(d.rpcUrl, "https://rpc.testnet.near.org");
-  assert.equal(d.txUrl, "https://testnet.nearblocks.io/txns/Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE");
+  assert.equal(d.txUrl, "https://testnet.nearblocks.io/txns/51udtFvQ4Po2E4Pj6H2gTTKAvK2VRKCGgBeAN7A25P2y");
   assert.equal(d.accountUrl, `https://testnet.nearblocks.io/address/${DEFAULT_CONTRACT_ID}`);
   assert.equal(d.timeoutMs, 5000);
 

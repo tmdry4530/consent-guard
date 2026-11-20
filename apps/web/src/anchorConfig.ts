@@ -5,7 +5,7 @@
 export interface AnchorConfig {
   rpcUrl: string;
   contractId: string;
-  /** Explorer link to the anchor tx for the sample snapshot. */
+  /** Explorer link to the anchor tx for the final demo ledger head. */
   txUrl: string;
   /** Explorer link to the anchor contract account. */
   accountUrl: string;
@@ -15,7 +15,14 @@ export interface AnchorConfig {
 export const DEFAULT_RPC_URL = "https://rpc.testnet.near.org";
 export const DEFAULT_CONTRACT_ID = "consent-guard-anchor.tee-receipts-chamdom.testnet";
 export const DEFAULT_EXPLORER_BASE = "https://testnet.nearblocks.io";
-export const DEFAULT_ANCHOR_TX = "Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE";
+/** Anchor tx of the final demo ledger head (2026-11-20 22:41:52 KST, block 278,539,285). */
+export const DEFAULT_ANCHOR_TX = "51udtFvQ4Po2E4Pj6H2gTTKAvK2VRKCGgBeAN7A25P2y";
+/** First anchor (5-event sample fixture, packages/ledger/verify/fixtures/sample-chain.json); history only. */
+export const FIRST_ANCHOR_TX = "Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE";
+/** Final head/count of the full 5-scene demo (fixed clock), as anchored by DEFAULT_ANCHOR_TX. */
+export const EXPECTED_FINAL_HEAD = "259dbd26b973e4a7e8252488ce2a4d97d532f8355825b4edc3722c97b20fa95b";
+export const EXPECTED_FINAL_COUNT = 11;
+export const EXPECTED_ANCHOR_BLOCK = 278_539_285;
 export const DEFAULT_TIMEOUT_MS = 5000;
 
 type Env = Partial<Record<string, string | boolean | undefined>>;

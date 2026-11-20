@@ -1,37 +1,36 @@
 import { useEffect, useState } from "react";
 import { anchorConfig } from "./anchorConfig";
-import { checkAnchorStatus, SAMPLE_SNAPSHOT, type AnchorStatusResult } from "./anchorStatus";
+import { LABEL_CHECKING, compareLive, readAnchorStatus, type AnchorRead, type AnchorStatusResult } from "./anchorStatus";
 
-const LABEL: Record<AnchorStatusResult["kind"], string> = {
-  match: "온체인 앵커 일치 ✓",
-  mismatch: "온체인 앵커 불일치 ✗",
-  unavailable: "앵커 확인 불가",
+const TONE: Record<AnchorStatusResult["kind"], string> = {
+  before: "pending",
+  match: "ok",
+  mismatch: "bad",
+  unavailable: "warn",
 };
-const TONE: Record<AnchorStatusResult["kind"], string> = { match: "ok", mismatch: "bad", unavailable: "warn" };
 
-/** NEAR testnet anchor status for the sample snapshot; non-blocking, never throws into render. */
-export function AnchorStatus({ liveCount }: { liveCount: number }) {
-  const [status, setStatus] = useState<AnchorStatusResult | null>(null);
+interface Props {
+  liveCount: number;
+  liveHead?: string;
+  chainOk?: boolean;
+}
+
+/** Live demo ledger vs the NEAR testnet anchor; reads the RPC once, non-blocking, never throws into render. */
+export function AnchorStatus({ liveCount, liveHead, chainOk }: Props) {
+  const [read, setRead] = useState<AnchorRead | null>(null);
 
   useEffect(() => {
     let live = true;
     const config = anchorConfig();
-    checkAnchorStatus({
+    readAnchorStatus({
       fetchImpl: (url, init) => fetch(url, init),
       rpcUrl: config.rpcUrl,
       contractId: config.contractId,
       timeoutMs: config.timeoutMs,
     }).then(
-      (r) => live && setStatus(r),
-      // checkAnchorStatus does not throw; this only guards against a bug turning into an unhandled rejection.
-      (e: unknown) =>
-        live &&
-        setStatus({
-          kind: "unavailable",
-          reason: String(e),
-          compared: "sample-snapshot",
-          snapshotCount: SAMPLE_SNAPSHOT.length,
-        }),
+      (r) => live && setRead(r),
+      // readAnchorStatus does not throw; this only guards against a bug turning into an unhandled rejection.
+      (e: unknown) => live && setRead({ kind: "unavailable", reason: String(e) }),
     );
     return () => {
       live = false;
@@ -39,12 +38,12 @@ export function AnchorStatus({ liveCount }: { liveCount: number }) {
   }, []);
 
   const config = anchorConfig();
-  const n = SAMPLE_SNAPSHOT.length;
+  const status = read && compareLive(read, { count: liveCount, head: liveHead, chainOk });
   return (
     <div className="anchor" data-testid="anchor-status" data-kind={status?.kind ?? "checking"}>
       <div className="anchor-line">
-        <span className={`anchor-label ${status ? TONE[status.kind] : "pending"}`}>
-          {status ? LABEL[status.kind] : "온체인 앵커 확인 중…"}
+        <span className={`anchor-label ${status ? TONE[status.kind] : "pending"}`} data-testid="anchor-label">
+          {status ? status.label : LABEL_CHECKING}
         </span>
         {status && <span className="anchor-reason">{status.reason}</span>}
         {status?.blockHeight !== undefined && (
@@ -65,8 +64,8 @@ export function AnchorStatus({ liveCount }: { liveCount: number }) {
         </span>
       </div>
       <div className="anchor-note">
-        NEAR 테스트넷에 기록된 샘플 장부 {n}건 스냅샷과 비교합니다. 아래 데모 감사 로그는 장면 진행용이라 이 스냅샷과
-        다를 수 있습니다. 지금 보는 데모 장부는 {liveCount}건이며 아직 이 앵커에 포함되지 않습니다.
+        NEAR 테스트넷에는 데모 5장면을 끝까지 진행했을 때의 최종 장부 헤드가 앵커되어 있습니다. 시계가 고정이라 끝까지
+        진행하면 항상 같은 헤드가 나오고, 그때 현재 장부와 온체인 앵커를 비교합니다. 지금 장부는 {liveCount}건입니다.
       </div>
     </div>
   );
