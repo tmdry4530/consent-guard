@@ -135,6 +135,56 @@ body {
   color: var(--deny);
 }
 
+/* On-chain anchor status (audit log); compact, wraps inside the span-6 card. */
+.anchor {
+  margin: -4px 0 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f8f9fb;
+  font-size: 11px;
+}
+.anchor-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+.anchor-label {
+  font-weight: 700;
+}
+.anchor-label.ok {
+  color: var(--allow);
+}
+.anchor-label.bad {
+  color: var(--deny);
+}
+.anchor-label.warn {
+  color: var(--pending);
+}
+.anchor-label.pending,
+.anchor-reason,
+.anchor-note {
+  color: var(--muted);
+}
+.anchor-reason {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.anchor-links {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+.anchor-links a {
+  color: var(--accent);
+}
+.anchor-note {
+  margin-top: 2px;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
 .list,
 .scroll {
   list-style: none;

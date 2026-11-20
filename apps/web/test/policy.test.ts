@@ -43,14 +43,14 @@ test("5. after revoking grant-card-budget the follow-up card request is denied",
   const r = evaluate(demo.afterRevoke["grant-card-budget"], revoked, NOW + 2);
   assert.equal(r.decision, "deny");
   assert.deepEqual(r.passFields, []);
-  assert.match(r.reason, /revoked/);
+  assert.match(r.reason, /철회/);
 });
 
 test("diet grant expired at NOW+10min (TTL passed) → deny with expiry reason, even for medical_record", () => {
   const r = evaluate(req("req-allergy-diet"), demo.grants, NOW + TEN_MIN);
   assert.equal(r.decision, "deny");
   assert.equal(r.grantId, "grant-allergy-diet");
-  assert.match(r.reason, /expired/);
+  assert.match(r.reason, /만료/);
 });
 
 test("purpose mismatch on non-sensitive dataset → deny", () => {
@@ -73,7 +73,7 @@ test("replay via seenRequestIds: second evaluate of the same id is denied", () =
   assert.equal(evaluate(req("req-card-budget"), demo.grants, NOW, { seenRequestIds }).decision, "allow");
   const replay = evaluate(req("req-card-budget"), demo.grants, NOW, { seenRequestIds });
   assert.equal(replay.decision, "deny");
-  assert.match(replay.reason, /replay/);
+  assert.match(replay.reason, /재요청/);
 });
 
 test("applyMask on card_tx rows with the card-budget allow result → merchant masked, category/amount kept", () => {
