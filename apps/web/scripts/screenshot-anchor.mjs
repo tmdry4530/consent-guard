@@ -5,7 +5,7 @@
 //   anchor-unavailable.png RPC request aborted (offline) → "앵커 확인 불가"
 //   node apps/web/scripts/screenshot-anchor.mjs                        # spawns `vite` on 127.0.0.1:4177
 //   BASE_URL=http://127.0.0.1:4173 node apps/web/scripts/screenshot-anchor.mjs   # use a running server
-// Env: OUT_DIR (default /workspace/company/dev3-logs/nesa-final-anchor-evidence/), RPC_URL (the RPC the app
+// Env: OUT_DIR (default <repo>/evidence/anchor-status/), RPC_URL (the RPC the app
 // calls; default https://rpc.testnet.near.org), PORT (default 4177). before/match hit the live public RPC.
 // Exits 1 if a state never appears or the anchor status overflows the audit-log card / viewport.
 import { spawn } from "node:child_process";
@@ -15,11 +15,12 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { resolveChromePath } from "./chromePath.mjs";
 
+const WEB_DIR = fileURLToPath(new URL("..", import.meta.url));
+const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const PORT = Number(process.env.PORT ?? 4177);
-const OUT_DIR = process.env.OUT_DIR ?? "/workspace/company/dev3-logs/nesa-final-anchor-evidence/";
+const OUT_DIR = process.env.OUT_DIR ?? join(repoRoot, "evidence/anchor-status");
 const RPC_URL = (process.env.RPC_URL ?? "https://rpc.testnet.near.org").replace(/\/+$/, "");
 const VIEWPORT = { width: 1280, height: 800 };
-const WEB_DIR = fileURLToPath(new URL("..", import.meta.url));
 const OTHER_HEAD = "ab".repeat(32);
 mkdirSync(OUT_DIR, { recursive: true });
 

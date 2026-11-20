@@ -85,7 +85,7 @@ xdg-open demo/video/consent-guard-demo.webm
 DEMO_REAL_RPC=1 npm run demo:video -w @consent-guard/web
 ```
 
-기본은 e2e와 같은 `page.route` 목으로 오프라인 녹화한다. 자체 Vite 서버를 **4174**에 띄우므로 `npm run e2e`와 동시에 돌리지 말 것. Chrome이 기본 경로에 없으면 `CHROME_PATH`를 지정한다. 장면별 PNG는 `EVIDENCE_DIR`로 추출되며, 기본값은 저장소 밖 `../evidence/dev2-e2e`이니 다른 곳에 쓰려면 그 변수를 덮어쓴다.
+기본은 e2e와 같은 `page.route` 목으로 오프라인 녹화한다. 자체 Vite 서버를 **4174**에 띄우므로 `npm run e2e`와 동시에 돌리지 말 것. Chrome이 기본 경로에 없으면 `CHROME_PATH`를 지정한다. 장면별 PNG는 `EVIDENCE_DIR`로 추출되며, 기본값은 저장소 안 `evidence/demo-video/`다. 다른 곳에 쓰려면 그 변수를 덮어쓴다. `demo/video/`의 커밋된 영상은 덮어쓰지 않도록 주의한다.
 
 ### 3) 발표용 장면 캡처
 

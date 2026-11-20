@@ -1,17 +1,17 @@
 // Evidence screenshots of the verify page: pasted matching anchor (GREEN) and mismatched anchor (RED).
-// Uses playwright-core from /tmp/c9-video-tools (not a dependency) and system Chrome. No network beyond localhost.
-// Env: PLAYWRIGHT_CORE (module path), CHROME_PATH, OUT_DIR.
+// Uses the repo's @playwright/test and system Chrome. No network beyond localhost (unless --live).
+// Env: CHROME_PATH, OUT_DIR (default <repo>/evidence/ledger-verify).
 import { mkdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { chromium } from "@playwright/test";
+import { resolveChromePath } from "../../../apps/web/scripts/chromePath.mjs";
 import { startServer } from "./serve-verify.mjs";
 
-const pwPath = process.env.PLAYWRIGHT_CORE ?? "/tmp/c9-video-tools/node_modules/playwright-core/index.mjs";
-const chromePath = process.env.CHROME_PATH ?? "/usr/bin/google-chrome";
-const outDir = process.env.OUT_DIR ?? "/workspace/company/dev3-logs/nesa-ledger-evidence";
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
+const chromePath = process.env.CHROME_PATH ?? resolveChromePath();
+const outDir = process.env.OUT_DIR ?? join(repoRoot, "evidence/ledger-verify");
 
-// Dynamic on purpose: playwright-core lives outside this repo at a runtime-configured path.
-const { chromium } = await import(pathToFileURL(pwPath).href);
 const fixture = JSON.parse(await readFile(new URL("../verify/fixtures/sample-chain.json", import.meta.url), "utf8"));
 const head = fixture.at(-1).hash;
 
