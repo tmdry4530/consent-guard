@@ -1,6 +1,7 @@
 // Pure app state transitions. Each returns the next state plus the ledger inputs to append.
 import type { DataRequest, Grant, PolicyResult } from "@consent-guard/policy";
-import type { LedgerInput } from "./ledgerAdapter";
+import type { LedgerInput } from "@consent-guard/ledger/adapter";
+import type { ProxyAiResult } from "@consent-guard/proxy";
 import { evaluate } from "./policyAdapter";
 
 export const APPROVED_GRANT_TTL_MS = 60 * 60 * 1000;
@@ -10,6 +11,10 @@ export interface RequestEntry {
   result: PolicyResult;
   /** Set when the user resolved a pending request from the approval queue. */
   resolvedBy?: "approve" | "reject";
+  /** AI answer obtained through the consent proxy at the moment the request was allowed; kept as history. */
+  ai?: ProxyAiResult;
+  /** Set instead of `ai` when the proxy/adapter failed (e.g. no recorded answer for this id). */
+  aiError?: string;
 }
 
 export interface AppState {

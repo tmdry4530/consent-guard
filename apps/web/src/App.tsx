@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { DataRequest, Decision, Grant, LedgerEvent } from "@consent-guard/policy";
-import { TEN_MIN, aiResponses, sampleData } from "./fixtures";
-import { append, list, verifyChain, type LedgerInput } from "./ledgerAdapter";
+import { append, list, type LedgerInput } from "@consent-guard/ledger/adapter";
+// Not the adapter's verifyChain: that one returns a bare boolean; core's returns { ok, index, reason }.
+import { verifyChain, type VerifyResult } from "@consent-guard/ledger/core";
+import type { ConsentProxy } from "@consent-guard/proxy";
+import { awaitingAi, fetchAi, withAi } from "./ai";
+import { TEN_MIN, sampleData } from "./fixtures";
 import { applyMask, MASK } from "./policyAdapter";
 import {
   advanceDemoClock,
@@ -77,6 +81,8 @@ function remaining(ms: number): string {
 interface AppProps {
   initial: AppState;
   initialLedger: LedgerEvent[];
+  /** Consent proxy used to get the AI answer when a request becomes allowed (after 허용). */
+  proxy: ConsentProxy;
   afterRevoke: Record<string, DataRequest>;
   /** grantId -> follow-up request enqueued once the demo clock passes that grant's TTL. */
   afterExpire: Record<string, DataRequest>;
@@ -84,19 +90,20 @@ interface AppProps {
   startAt: number;
 }
 
-export function App({ initial, initialLedger, afterRevoke, afterExpire, startAt }: AppProps) {
+export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, startAt }: AppProps) {
   const [state, setState] = useState(initial);
   const [ledger, setLedger] = useState(initialLedger);
-  const [chainOk, setChainOk] = useState<boolean | null>(null);
+  const [chain, setChain] = useState<VerifyResult | null>(null);
   const [now, setNow] = useState(startAt);
 
   const nowRef = useRef(startAt);
   const stateRef = useRef(state);
   const ledgerQueue = useRef(Promise.resolve(initialLedger));
+  const aiInFlight = useRef(new Set<string>());
 
   useEffect(() => {
     let live = true;
-    verifyChain(ledger).then((ok) => live && setChainOk(ok));
+    verifyChain(ledger).then((r) => live && setChain(r));
     return () => {
       live = false;
     };
@@ -115,7 +122,15 @@ export function App({ initial, initialLedger, afterRevoke, afterExpire, startAt 
       setLedger(next);
       return next;
     });
-  }, []);
+    // Newly allowed requests (approve): fetch the AI answer once, at decision time, and keep it.
+    const ids = awaitingAi(t.state).filter((id) => !aiInFlight.current.has(id));
+    if (ids.length === 0) return;
+    for (const id of ids) aiInFlight.current.add(id);
+    fetchAi(proxy, t.state, ids, nowRef.current).then((outcomes) => {
+      stateRef.current = withAi(stateRef.current, outcomes);
+      setState(stateRef.current);
+    });
+  }, [proxy]);
 
   const advanceClock = useCallback(() => {
     nowRef.current += TEN_MIN;
@@ -244,9 +259,13 @@ export function App({ initial, initialLedger, afterRevoke, afterExpire, startAt 
 
         <section className="card span-6" data-testid="audit-log">
           <h2>
-            감사 로그 <span className="tag">mock</span>
-            <span className={`chain ${chainOk === false ? "bad" : "ok"}`}>
-              {chainOk === null ? "검증 중…" : chainOk ? "해시 체인 검증 ✓" : "해시 체인 손상 ✗"}
+            감사 로그
+            <span className={`chain ${chain?.ok === false ? "bad" : "ok"}`} data-testid="chain-status">
+              {chain === null
+                ? "검증 중…"
+                : chain.ok
+                  ? "해시 체인 검증 ✓"
+                  : `해시 체인 손상 ✗ #${chain.index} ${chain.reason}`}
             </span>
           </h2>
           <div className="scroll">
@@ -302,18 +321,23 @@ export function App({ initial, initialLedger, afterRevoke, afterExpire, startAt 
             <p className="empty">허용된 요청 없음</p>
           ) : (
             <ul className="list ai-list">
-              {allowed.map(({ request: r }) => {
-                const ai = aiResponses.get(r.id);
-                return (
-                  <li key={r.id} className="item ai-card" data-testid={`ai-card-${r.id}`}>
-                    <div className="row">
-                      <strong>{r.agentId}</strong>
-                      {ai && <span className="badge recorded">recorded</span>}
-                    </div>
-                    {ai ? <p className="ai-text">{ai.text}</p> : <p className="empty small">녹화된 응답 없음 (라이브 모델 호출 안 함)</p>}
-                  </li>
-                );
-              })}
+              {allowed.map(({ request: r, ai, aiError }) => (
+                <li key={r.id} className="item ai-card" data-testid={`ai-card-${r.id}`}>
+                  <div className="row">
+                    <strong>{r.agentId}</strong>
+                    {ai && <span className={`badge ${ai.badge}`}>{ai.badge}</span>}
+                  </div>
+                  {ai ? (
+                    <p className="ai-text">{ai.text}</p>
+                  ) : aiError !== undefined ? (
+                    <p className="empty small" title={aiError}>
+                      AI 응답 없음 (라이브 모델 호출 안 함)
+                    </p>
+                  ) : (
+                    <p className="empty small">AI 응답 대기 중…</p>
+                  )}
+                </li>
+              ))}
             </ul>
           )}
         </section>

@@ -1,5 +1,6 @@
 // Typed loader for the repo-root demo fixtures (bundled by Vite, loaded by tsx in tests).
 import type { DataRequest, Grant } from "@consent-guard/policy";
+import { loadFixtureResponses, type FixtureResponse } from "@consent-guard/proxy";
 import demoJson from "../../../fixtures/demo.json";
 import sampleJson from "../../../fixtures/sample-data.json";
 import aiJson from "../../../fixtures/ai-responses.json";
@@ -11,12 +12,6 @@ export interface DemoFixtures {
   afterRevoke: Record<string, DataRequest>;
   /** grantId -> follow-up request enqueued when the demo clock passes that grant's expiresAt (`at` is re-stamped) */
   afterExpire: Record<string, DataRequest>;
-}
-
-export interface RecordedAiResponse {
-  requestId: string;
-  text: string;
-  recorded: true;
 }
 
 export type SampleRow = Record<string, string | number | string[]>;
@@ -33,6 +28,5 @@ export function loadDemo(): DemoFixtures {
 
 export const sampleData: SampleData = sampleJson as SampleData;
 
-export const aiResponses: ReadonlyMap<string, RecordedAiResponse> = new Map(
-  (aiJson.responses as RecordedAiResponse[]).map((r) => [r.requestId, r]),
-);
+/** Validated recorded AI answers (fixtures/ai-responses.json), fed to the proxy's fixture adapter. */
+export const aiFixtures: readonly FixtureResponse[] = loadFixtureResponses(aiJson);
