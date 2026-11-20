@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DataRequest, Decision, Grant, LedgerEvent } from "@consent-guard/policy";
+import type { DataRequest, Decision, LedgerEvent } from "@consent-guard/policy";
 import { append, list, type LedgerInput } from "@consent-guard/ledger/adapter";
 // Not the adapter's verifyChain: that one returns a bare boolean; core's returns { ok, index, reason }.
 import { verifyChain, type VerifyResult } from "@consent-guard/ledger/core";
@@ -7,6 +7,7 @@ import type { ConsentProxy } from "@consent-guard/proxy";
 import { awaitingAi, fetchAi, withAi } from "./ai";
 // Explicit extension: on case-insensitive filesystems "./AnchorStatus" could resolve to ./anchorStatus.ts.
 import { AnchorStatus } from "./AnchorStatus.tsx";
+import { followUpFor } from "./demoScenario";
 import { TEN_MIN, sampleData } from "./fixtures";
 import { applyMask, MASK } from "./policyAdapter";
 import {
@@ -141,10 +142,6 @@ export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, s
     apply((s, at) => advanceDemoClock(s, at, afterExpire));
   }, [apply, afterExpire]);
 
-  const followUpFor = (g: Grant): DataRequest | undefined =>
-    afterRevoke[g.id] ??
-    (g.dataset === "card_tx" && g.purposes.includes("budgeting") ? afterRevoke["grant-card-budget"] : undefined);
-
   const pending = state.requests.filter((e) => e.result.decision === "pending");
   const allowed = state.requests.filter((e) => e.result.decision === "allow");
 
@@ -250,7 +247,7 @@ export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, s
                         className="btn revoke"
                         data-testid={`revoke-${g.id}`}
                         disabled={!canRevokeGrant(g, now)}
-                        onClick={() => apply((s, at) => revokeGrant(s, g.id, at, followUpFor(g)))}
+                        onClick={() => apply((s, at) => revokeGrant(s, g.id, at, followUpFor(afterRevoke, g)))}
                       >
                         철회
                       </button>
@@ -273,7 +270,7 @@ export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, s
                   : `해시 체인 손상 ✗ #${chain.index} ${chain.reason}`}
             </span>
           </h2>
-          <AnchorStatus liveCount={ledger.length} />
+          <AnchorStatus liveCount={ledger.length} liveHead={ledger.at(-1)?.hash} chainOk={chain?.ok} />
           <div className="scroll">
             <table className="table">
               <thead>
