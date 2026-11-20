@@ -8,3 +8,8 @@ build/
 out/
 .cache/
 target/
+# Playwright artifacts (the committed demo video lives in demo/video/)
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
