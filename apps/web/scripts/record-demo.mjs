@@ -2,6 +2,7 @@
 // Usage (from apps/web): npm run demo:video
 //   PORT=4174 SCENE_PAUSE_MS=11000 EVIDENCE_DIR=/path node scripts/record-demo.mjs
 // Starts its own vite dev server (127.0.0.1 only) and kills exactly that PID when done.
+// Offline: the NEAR RPC read_anchor call is mocked (match) before goto, same helper as the e2e spec.
 //
 // Capture is CDP screencast → system ffmpeg, not Playwright recordVideo: the latter needs
 // Playwright's own ffmpeg build, which would mean a download.
@@ -11,6 +12,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
+import { mockAnchorRpc, waitForAnchorStatus } from "../e2e/anchorMock.ts";
 
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(webDir, "../..");
@@ -88,9 +90,11 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
+  await mockAnchorRpc(page, "match");
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
   await page.getByTestId("chain-status").getByText("해시 체인 검증 ✓").waitFor();
   await page.getByTestId("ai-card-req-card-budget").locator(".badge").getByText("recorded").waitFor();
+  await waitForAnchorStatus(page, "match");
 
   const mjpeg = join(tmp, "capture.mjpeg");
   const rec = await startRecorder(page, mjpeg);
@@ -131,6 +135,7 @@ try {
   await press("revoke-grant-card-budget");
   await badge("req-card-after-revoke").getByText("거부").waitFor();
   await page.getByTestId("chain-status").getByText("해시 체인 검증 ✓").waitFor();
+  await waitForAnchorStatus(page, "match");
   await hold("05-revoke");
 
   await rec.stop();
