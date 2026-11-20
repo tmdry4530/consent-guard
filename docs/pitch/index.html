@@ -98,6 +98,7 @@
   .guar .b strong { font-size: 22px; margin-right: 6px; }
   .guar .mono { font-size: .86em; overflow-wrap: anywhere; word-break: break-all; }
   .guar .chip { display: inline-block; font-family: var(--mono); font-size: .82em; background: var(--deny-bg); color: var(--deny); border-radius: 6px; padding: 0 6px; margin: 1px 0; }
+  .guar-note { flex: none; margin: 10px 0 0; padding-right: 120px; font-size: 17px; line-height: 1.4; color: var(--muted); }
 
   /* 10. 한계 */
   .cols { flex: 1; display: flex; gap: 28px; margin-top: 26px; min-height: 0; }
@@ -344,6 +345,7 @@
       <li class="card"><span class="n">4</span><div class="b"><strong>해시 체인</strong> 각 이벤트(grant / access / deny / pending / revoke)를 canonical JSON의 sha256으로 연결. 변조 시 실패 위치와 사유까지 검출하고, 꼬리 절단은 앵커 비교로 검출.</div></li>
       <li class="card"><span class="n">5</span><div class="b"><strong>온체인 앵커</strong> NEAR 테스트넷 계정 <span class="mono">consent-guard-anchor.tee-receipts-chamdom.testnet</span>에 장부 헤드 해시와 개수를 기록.<br>현재 앵커(웹 데모 최종 장부): 11건, 헤드 <span class="mono">259dbd26…fa95b</span>, 블록 278,539,285,<br>tx <span class="mono">51udtFvQ4Po2E4Pj6H2gTTKAvK2VRKCGgBeAN7A25P2y</span>.</div></li>
     </ol>
+    <p class="guar-note">그 밖에: 재요청 차단, 용도·기간·행 수 제한, TTL</p>
   </section>
 
   <!-- 10 -->
