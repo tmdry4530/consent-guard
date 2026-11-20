@@ -11,7 +11,10 @@ const aiCards = () => page.locator('[data-testid^="ai-card-"]');
 
 test.beforeAll(async ({ browser }) => {
   page = await browser.newPage();
-  await mockAnchorRpc(page, "match"); // offline: no NEAR RPC traffic
+  // offline: no NEAR RPC traffic. The anchor is the live demo ledger's final head (checked == EXPECTED_FINAL_*).
+  const anchor = await mockAnchorRpc(page, "match");
+  expect(anchor.source).toBe("scenario");
+  expect(anchor.count).toBe(11);
   await page.goto("/");
   await expect(page.getByTestId("request-feed")).toBeVisible();
 });
@@ -49,7 +52,8 @@ test("scene 1: initial feed — card allowed with merchant masked, recorded AI",
   await expect(page.getByTestId("ai-card-req-medical-full")).toHaveCount(0);
   await expect(aiCards()).toHaveCount(2);
 
-  await waitForAnchorStatus(page, "match");
+  await waitForAnchorStatus(page, "before");
+  await expect(page.getByTestId("anchor-label")).toHaveText(/11건 중 \d+건 · 앵커 전/);
 });
 
 test("scene 2: raw account_number request denied, adapter not called", async () => {
@@ -115,4 +119,5 @@ test("scene 5: revoke card grant, re-request denied, audit chain verified", asyn
   const kinds = await audit.locator(".kind").allTextContents();
   for (const k of ["권한 부여", "접근", "거부", "철회"]) expect(kinds).toContain(k);
   await waitForAnchorStatus(page, "match");
+  await expect(page.getByTestId("anchor-label")).toContainText("일치 ✓");
 });

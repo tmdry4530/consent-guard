@@ -1,18 +1,21 @@
 // Records the 5-scene demo as a 1280×800 webm with readable pauses, then extracts evidence frames.
 // Usage (from apps/web): npm run demo:video
 //   PORT=4174 SCENE_PAUSE_MS=11000 EVIDENCE_DIR=/path node scripts/record-demo.mjs
+//   DEMO_REAL_RPC=1 node scripts/record-demo.mjs   # read_anchor hits the real public NEAR testnet RPC
 // Starts its own vite dev server (127.0.0.1 only) and kills exactly that PID when done.
-// Offline: the NEAR RPC read_anchor call is mocked (match) before goto, same helper as the e2e spec.
+// Default is offline: read_anchor is mocked (final demo head) before goto, same helper as the e2e spec.
+// DEMO_REAL_RPC=1: no mock (read-only view call, no keys); the panel must read "before" after load and "match"
+// after scene 5, else the script exits non-zero without touching the video or evidence frames.
 //
 // Capture is CDP screencast → system ffmpeg, not Playwright recordVideo: the latter needs
 // Playwright's own ffmpeg build, which would mean a download.
 import { execFileSync, spawn } from "node:child_process";
-import { createWriteStream, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
+import { copyFileSync, createWriteStream, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
-import { mockAnchorRpc, waitForAnchorStatus } from "../e2e/anchorMock.ts";
+import { RPC_URL, mockAnchorRpc, readAnchorStatus, waitForAnchorStatus } from "../e2e/anchorMock.ts";
 
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(webDir, "../..");
@@ -24,6 +27,20 @@ const FPS = 10;
 const OUT = join(repoRoot, "demo/video/consent-guard-demo.webm");
 const EVIDENCE_DIR = process.env.EVIDENCE_DIR ?? resolve(repoRoot, "../evidence/dev2-e2e");
 const MAX_BYTES = 20 * 1024 * 1024;
+const REAL_RPC = process.env.DEMO_REAL_RPC === "1";
+
+/** Like waitForAnchorStatus, but the error names what the panel actually shows. */
+async function expectAnchor(page, kind) {
+  try {
+    await waitForAnchorStatus(page, kind);
+  } catch (e) {
+    const now = await readAnchorStatus(page).catch(() => ({ kind: "?", label: "?" }));
+    throw new Error(
+      `anchor panel expected data-kind="${kind}" (${REAL_RPC ? "real RPC" : "mocked RPC"}), ` +
+        `got data-kind="${now.kind}" label="${now.label}": ${e.message.split("\n")[0]}`,
+    );
+  }
+}
 
 async function waitForServer(url, ms) {
   const end = Date.now() + ms;
@@ -90,11 +107,24 @@ try {
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
-  await mockAnchorRpc(page, "match");
+  if (REAL_RPC) {
+    page.on("response", (r) => {
+      if (r.url().replace(/\/+$/, "") === RPC_URL && r.request().method() === "POST")
+        console.log(`real RPC: POST ${r.url()} -> HTTP ${r.status()}`);
+    });
+    page.on("requestfailed", (r) => {
+      if (r.url().replace(/\/+$/, "") === RPC_URL) console.log(`real RPC: ${r.url()} failed: ${r.failure()?.errorText}`);
+    });
+    console.log(`anchor: real public RPC ${RPC_URL} (no mock)`);
+  } else {
+    const anchor = await mockAnchorRpc(page, "match");
+    console.log(`anchor: mocked ${anchor.head}/${anchor.count} (${anchor.source})`);
+  }
   await page.goto(BASE_URL, { waitUntil: "networkidle" });
   await page.getByTestId("chain-status").getByText("해시 체인 검증 ✓").waitFor();
   await page.getByTestId("ai-card-req-card-budget").locator(".badge").getByText("recorded").waitFor();
-  await waitForAnchorStatus(page, "match");
+  await expectAnchor(page, "before");
+  console.log(`anchor after load: ${JSON.stringify(await readAnchorStatus(page))}`);
 
   const mjpeg = join(tmp, "capture.mjpeg");
   const rec = await startRecorder(page, mjpeg);
@@ -135,13 +165,25 @@ try {
   await press("revoke-grant-card-budget");
   await badge("req-card-after-revoke").getByText("거부").waitFor();
   await page.getByTestId("chain-status").getByText("해시 체인 검증 ✓").waitFor();
-  await waitForAnchorStatus(page, "match");
+  await expectAnchor(page, "match");
   await hold("05-revoke");
+
+  // End state: anchor panel in view, label must say the live ledger equals the on-chain anchor.
+  await page.getByTestId("anchor-status").scrollIntoViewIfNeeded();
+  await expectAnchor(page, "match");
+  const end = await readAnchorStatus(page);
+  console.log(`anchor at end: ${JSON.stringify(end)}`);
+  if (!end.label.includes("일치 ✓")) throw new Error(`anchor label lacks "일치 ✓": ${end.label}`);
+  await page.waitForTimeout(3000);
+  const endPng = join(tmp, "end.png");
+  await page.screenshot({ path: endPng });
 
   await rec.stop();
   await browser.close();
   browser = undefined;
 
+  // Encode to tmp; the published video is only replaced once the whole run succeeded.
+  const webm = join(tmp, "demo.webm");
   mkdirSync(dirname(OUT), { recursive: true });
   const encode = (crf) =>
     execFileSync("ffmpeg", [
@@ -150,14 +192,16 @@ try {
       "-vf", `scale=${VIEWPORT.width}:${VIEWPORT.height}`,
       "-c:v", "libvpx-vp9", "-crf", String(crf), "-b:v", "0", "-pix_fmt", "yuv420p",
       "-row-mt", "1", "-deadline", "good", "-cpu-used", "4",
-      OUT,
+      webm,
     ]);
   encode(32);
-  const firstBytes = statSync(OUT).size;
+  const firstBytes = statSync(webm).size;
   if (firstBytes > MAX_BYTES) {
     encode(45);
     console.log(`first encode ${firstBytes} bytes > 20MB, re-encoded at higher CRF`);
   }
+  if (statSync(webm).size > MAX_BYTES) throw new Error(`video ${statSync(webm).size} bytes > 20MB`);
+  copyFileSync(webm, OUT);
   const duration = execFileSync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", OUT])
     .toString()
     .trim();
@@ -172,6 +216,9 @@ try {
     execFileSync("ffmpeg", ["-y", "-loglevel", "error", "-ss", at, "-i", OUT, "-frames:v", "1", png]);
     console.log(`frame ${png} @ ${at}s`);
   }
+  const endName = REAL_RPC ? "06-real-rpc-match.png" : "06-mock-rpc-match.png";
+  copyFileSync(endPng, join(EVIDENCE_DIR, endName));
+  console.log(`end state ${join(EVIDENCE_DIR, endName)}`);
 } finally {
   await browser?.close();
   vite.kill("SIGTERM");
