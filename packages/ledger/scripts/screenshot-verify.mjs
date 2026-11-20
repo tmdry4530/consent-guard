@@ -25,17 +25,42 @@ try {
   await page.click("#load-sample");
   await page.waitForFunction(() => document.getElementById("events").value.length > 0);
 
-  for (const [name, pasted, want] of [
-    ["verify-green.png", head, "green"],
-    ["verify-red.png", "0x" + "ab".repeat(32), "red"],
-  ]) {
-    await page.fill("#pasted", pasted);
-    await page.check('input[name="source"][value="pasted"]');
+  const live = process.env.LIVE === "1" || process.argv.includes("--live");
+  const rpcUrl = process.env.NEAR_RPC_URL ?? "https://rpc.testnet.near.org";
+  const contractId = process.env.CONSENT_GUARD_ANCHOR_CONTRACT_ID ?? "consent-guard-anchor.tee-receipts-chamdom.testnet";
+  if (live) {
+    await page.fill("#rpc", rpcUrl);
+    await page.fill("#contract", contractId);
+    await page.check('input[name="source"][value="rpc"]');
     await page.click("#verify");
-    await page.waitForSelector(`#result.${want}`);
-    const file = join(outDir, name);
+    await page.waitForSelector("#result.green", { timeout: 30_000 });
+    let file = join(outDir, "live-verify-green.png");
     await page.screenshot({ path: file, fullPage: true });
-    console.log(`${want.toUpperCase()}: ${(await page.textContent("#result")).trim()}\n  -> ${file}`);
+    console.log(`GREEN: ${(await page.textContent("#result")).trim()}\n  -> ${file}`);
+
+    // Tamper one field in the loaded chain; compare against the same live on-chain anchor.
+    const tampered = structuredClone(fixture);
+    tampered[1].fields = ["tampered"];
+    await page.fill("#events", JSON.stringify(tampered, null, 2));
+    await page.check('input[name="source"][value="rpc"]');
+    await page.click("#verify");
+    await page.waitForSelector("#result.red", { timeout: 30_000 });
+    file = join(outDir, "live-verify-red.png");
+    await page.screenshot({ path: file, fullPage: true });
+    console.log(`RED: ${(await page.textContent("#result")).trim()}\n  -> ${file}`);
+  } else {
+    for (const [name, pasted, want] of [
+      ["verify-green.png", head, "green"],
+      ["verify-red.png", "0x" + "ab".repeat(32), "red"],
+    ]) {
+      await page.fill("#pasted", pasted);
+      await page.check('input[name="source"][value="pasted"]');
+      await page.click("#verify");
+      await page.waitForSelector(`#result.${want}`);
+      const file = join(outDir, name);
+      await page.screenshot({ path: file, fullPage: true });
+      console.log(`${want.toUpperCase()}: ${(await page.textContent("#result")).trim()}\n  -> ${file}`);
+    }
   }
 } finally {
   await browser.close();
