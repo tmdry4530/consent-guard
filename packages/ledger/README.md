@@ -9,7 +9,7 @@ Shared types come from `packages/policy/src/types.ts` (imported by relative path
 | Path | What |
 | --- | --- |
 | `src/core.js` (+ `core.d.ts`) | Browser-safe ESM, no `node:` imports: canonical JSON, hash chain, append/verify, anchor comparison, NEAR RPC view encode/decode. Used by Node and the verify page. |
-| `src/adapter.js` (+ `adapter.d.ts`) | Drop-in for `apps/web/src/ledgerAdapter.ts` (`verifyChain` returns boolean). |
+| `src/adapter.js` (+ `adapter.d.ts`) | Web adapter used by `apps/web` via `@consent-guard/ledger/adapter` (`append`, `list`, `verifyChain`). |
 | `src/index.ts` | Node entry: re-exports core, adds `nodeSha256Hex` (node:crypto) and `node.*` helpers bound to it. |
 | `src/anchor.ts` | `createAnchorAdapter({ rpcUrl, contractId, accountId, credentialsPath, dryRun = true, fetchImpl })` → `anchor(head, count)`, `readAnchor()`. |
 | `src/near.ts` | Defaults (RPC, contract id), credential-path existence check, opt-in live send. |
@@ -21,7 +21,7 @@ Shared types come from `packages/policy/src/types.ts` (imported by relative path
 
 - **Canonical JSON**: object keys sorted (`Array.prototype.sort`, UTF-16 code unit order), recursively; array order preserved; keys whose value is `undefined` omitted; no whitespace; primitives exactly as `JSON.stringify` encodes them. Non-finite numbers and bigints throw.
 - **Event hash** = lowercase hex sha256 of the UTF-8 bytes of the canonical JSON of the event **with `hash` and `anchorTx` omitted**. `anchorTx` is filled in after the head is anchored; including it would change the hash and break the chain. This is a hashing rule, not a type change.
-- **Genesis**: first event has `seq === 1` and `prevHash === GENESIS_PREV_HASH` / `GENESIS_HASH` (`"0".repeat(64)`). An empty chain verifies. Seq is 1-based so it matches the already-merged U3 web mock (`apps/web/src/ledgerAdapter.ts`).
+- **Genesis**: first event has `seq === 1` and `prevHash === GENESIS_PREV_HASH` / `GENESIS_HASH` (`"0".repeat(64)`). An empty chain verifies. Seq is 1-based (the web app relies on this).
 - **Links**: `events[i].seq === i + 1` and `events[i].prevHash === events[i-1].hash`.
 
 `verifyChain(events)` returns `{ ok: true }` or `{ ok: false, index, reason }`. `index` is the first event that is not a valid successor of the events before it; checks run in the order shape → hash recompute → seq → prevHash:
@@ -49,7 +49,13 @@ The existing `tee-receipts-chamdom.testnet` is the TEE receipts contract (`get_o
 - `read_anchor() -> Option<{ head_hash, count, block_height, timestamp_ms }>`
 - `get_owner()`
 
-Proposed account: **`consent-guard-anchor.tee-receipts-chamdom.testnet`** (subaccount; override with `--contract` / `CONSENT_GUARD_ANCHOR_CONTRACT_ID`). EL creates and deploys it at integration; owner defaults to the contract account itself (`--owner` / `CONSENT_GUARD_ANCHOR_OWNER_ID`).
+### Live testnet deployment (2026-11-20)
+
+- Contract account: **`consent-guard-anchor.tee-receipts-chamdom.testnet`** (subaccount of `tee-receipts-chamdom.testnet`; the parent's receipts contract is unchanged). Owner = the contract account itself. Override with `--contract` / `CONSENT_GUARD_ANCHOR_CONTRACT_ID` and `--owner` / `CONSENT_GUARD_ANCHOR_OWNER_ID`.
+- create-account tx: [`Egr1KaBsiDfVuTgq8TaRKMttNHyr97fcwd1Gd7LpWTcx`](https://testnet.nearblocks.io/txns/Egr1KaBsiDfVuTgq8TaRKMttNHyr97fcwd1Gd7LpWTcx)
+- deploy + `new` tx: [`Goyrf4qdzTjQB8Pn73J9G7vFsQGtU5dccZ37SZXUrUyE`](https://testnet.nearblocks.io/txns/Goyrf4qdzTjQB8Pn73J9G7vFsQGtU5dccZ37SZXUrUyE) (account code_hash `4pLnb1fWbixBoE4MeeMTAFadeBaeiX9L4STasCvq7nic`)
+- anchor tx (sample fixture, 5 events, head `85c3a623b71c66b803e8dfdb20ff54fa09c3ceac8f2deca58a9b7d637c4228ce`): [`Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE`](https://testnet.nearblocks.io/txns/Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE)
+- The signing key lives only in `~/.near-credentials/testnet/` (mode 0600) on the shared box and is never committed or printed.
 
 Build/test (wasm is committed, so this is only needed after contract changes):
 
@@ -74,7 +80,7 @@ node scripts/anchor.mjs --head <hex> --count 5
 
 Env/flags: `--contract`/`CONSENT_GUARD_ANCHOR_CONTRACT_ID`, `--owner|--signer`/`CONSENT_GUARD_ANCHOR_OWNER_ID`, `--rpc`/`NEAR_RPC_URL` (default `https://rpc.testnet.near.org`; `https://rpc.testnet.fastnear.com` also works), `--credentials`/`NEAR_CREDENTIALS_FILE` (default `~/.near-credentials/testnet/<account>.json`).
 
-The deploy dry run prints a near-cli-rs `create-account` command for creating the subaccount from the parent. That command was not run, so check it against the installed near CLI.
+The deploy dry run also prints the near-cli-rs `create-account` command used to create the subaccount from the parent. To re-anchor a new chain: `CONSENT_GUARD_ALLOW_TESTNET_WRITE=1 node scripts/anchor.mjs --events my.json --execute`, then `node scripts/anchor.mjs --read`.
 
 ## Verify page
 
@@ -91,29 +97,11 @@ The result is GREEN (`verified`) or RED, with the reason: no events, chain inval
 Screenshots: `node scripts/screenshot-verify.mjs` (playwright-core from `/tmp/c9-video-tools`, `/usr/bin/google-chrome`) writes `verify-green.png` / `verify-red.png` to `/workspace/company/dev3-logs/nesa-ledger-evidence/` (`OUT_DIR` overrides).
 
 
-## Swap for U3 `apps/web/src/ledgerAdapter.ts`
+## Use from the web app
 
-The web UI (dev2/web, merged) currently imports a mock from `./ledgerAdapter`. `@consent-guard/ledger` has no extra runtime deps (WebCrypto in the browser, `node:crypto` in Node). After this package is merged, the mock can be replaced as follows.
+`apps/web` imports `@consent-guard/ledger/adapter` (browser-safe ESM: `src/adapter.js` + `src/core.js`, no `node:` imports, so Vite bundles it as-is). For the richer API import `@consent-guard/ledger` or `@consent-guard/ledger/core`; there `verifyChain` returns `{ ok: true } | { ok: false, index, reason }`.
 
-Recommended (one import change; signatures match the mock, including `verifyChain(): Promise<boolean>` and 1-based seq):
-
-1. In `apps/web/package.json`, add a workspace dependency: `"@consent-guard/ledger": "*"`.
-2. Replace every `from "./ledgerAdapter"` with `from "@consent-guard/ledger/adapter"` in:
-   - `apps/web/src/App.tsx`
-   - `apps/web/src/main.tsx`
-   - `apps/web/src/state.ts` (type-only `LedgerInput`)
-   - `apps/web/test/ledger.test.ts`
-3. Delete `apps/web/src/ledgerAdapter.ts`.
-4. Run `npm install` at the repo root (so the workspace link is added to the existing lockfile — this package adds no new npm dependencies) and `npm test` / `npm run typecheck` in `apps/web`.
-
-The adapter entry is browser-safe ESM (`src/adapter.js` + `src/core.js`, no `node:` imports), so Vite can bundle it as-is.
-
-If you would rather import the richer root API (`@consent-guard/ledger` or `@consent-guard/ledger/core`):
-
-- `append`, `list`, `GENESIS_HASH`, `LedgerInput` / `LedgerEventInput`, `hashEvent`, `createEvent` are the same.
-- Root `verifyChain` returns `{ ok: true } | { ok: false, index, reason }` instead of a boolean (EL's U2 contract, used by the verify page). In `App.tsx` change `verifyChain(ledger).then((ok) => live && setChainOk(ok))` to `verifyChain(ledger).then((r) => live && setChainOk(r.ok))`, and in `test/ledger.test.ts` assert `(await verifyChain(chain)).ok` instead of the boolean.
-
-Near anchoring is not part of the mock adapter. To show `anchorTx` on events later, call `createAnchorAdapter({ dryRun: true })` from the Node side or paste the head on the verify page; the web app can keep using recorded fixtures until EL runs the real testnet deploy.
+On-chain anchoring is not part of the web adapter. Use `scripts/anchor.mjs` (or `createAnchorAdapter`) from Node, and check the result on the verify page against the live contract above.
 
 ## Tests
 
