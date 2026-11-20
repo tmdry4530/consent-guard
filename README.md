@@ -6,22 +6,24 @@ AI 에이전트가 개인 데이터에 접근할 때 **동의된 필드만, 동�
 
 ## 실행 방법
 
-Node **23.6 이상** (`engines`; TypeScript를 type stripping으로 직접 실행, 빌드 단계 없음). Node 24.22에서 확인.
+Node **23.6 이상** (루트 `.nvmrc`, `engines`; TypeScript를 type stripping으로 직접 실행, 빌드 단계 없음). Node 24.22에서 확인.
 
 ```bash
-npm install
-npm test             # 전체 워크스페이스 테스트 (116개: policy 26, proxy 10, ledger 35, integration 6, web 39)
+npm ci               # 또는 npm install. typecheck는 웹 워크스페이스의 @playwright/test 타입이 필요하므로 설치를 먼저 한다.
+npm test             # 전체 워크스페이스 테스트 (119개: policy 26, proxy 10, ledger 35, integration 6, web 42)
 npm run typecheck    # 전체 워크스페이스 tsc (5개 워크스페이스)
 npm run demo:cli     # 데모 장면 1~5를 터미널에 출력, 마지막에 "ledger: 9 events, head faf3ef62b36a…" · "chain verified: OK"
-npm run e2e          # Playwright 브라우저 e2e: 데모 5장면 순서대로 5개 테스트 (1280×800)
+npm run e2e          # Playwright 브라우저 e2e: 데모 5장면 + /?mock=1 오프라인 목 1개, 총 6개 (1280×800)
 ```
 
 `npm run e2e`는 오프라인으로 실행됩니다. Playwright가 `127.0.0.1:4174`에 Vite 개발 서버를 직접 띄웠다 내립니다(`E2E_PORT`로 변경). `--strictPort`와 `reuseExistingServer: false`라서 해당 포트가 이미 쓰이면 잘못된 페이지를 치지 않고 바로 실패합니다. `verify:serve`는 `127.0.0.1:4173`을 쓰므로 e2e와 동시에 돌려도 됩니다. 테스트넷 `read_anchor` RPC 호출은 `page.route`로 가로채 데모 최종 장부 헤드(11건)를 돌려줍니다. 브라우저는 다운로드하지 않고 시스템 Chrome(`/usr/bin/google-chrome`, `CHROME_PATH`로 변경)을 씁니다.
 
+발표 당일 점검과 오프라인 대체(목 RPC, 백업 영상, 장면 PNG)는 [`docs/RUNBOOK.md`](docs/RUNBOOK.md)를 본다. 발표장 인터넷이 없으면 웹을 `/?mock=1`로 열거나 `VITE_ANCHOR_MOCK=1 npm run dev`로 띄운다. 패널에 `목 RPC · 오프라인 대체`가 보이며, 테스트넷 RPC를 호출하지 않는다.
+
 웹 데모 (Vite 개발 서버, http://localhost:5173/):
 
 ```bash
-npm run dev -w @consent-guard/web
+npm run dev            # 또는 npm run dev -w @consent-guard/web
 ```
 
 백업 데모 영상: [`demo/video/consent-guard-demo.webm`](demo/video/consent-guard-demo.webm) (1280×800, 약 65초, 5장면). 다시 녹화하려면 (시스템 `ffmpeg` 필요, 자체 Vite 서버를 `127.0.0.1:4174`에 띄웠다 그 PID만 종료):
@@ -30,7 +32,7 @@ npm run dev -w @consent-guard/web
 DEMO_REAL_RPC=1 npm run demo:video -w @consent-guard/web
 ```
 
-`DEMO_REAL_RPC=1`이면 `read_anchor`를 실제 NEAR 테스트넷 RPC에 읽기 전용으로 호출하며(키 불필요), 로드 직후 `앵커 전`, 5장면 뒤 `일치 ✓`가 아니면 영상을 덮어쓰지 않고 실패합니다. 빼면 e2e와 같은 모킹으로 오프라인 녹화합니다. 녹화 후 장면별 증거 프레임(PNG)을 `EVIDENCE_DIR`(기본: 저장소 밖 `../evidence/dev2-e2e`)에 추출합니다.
+`DEMO_REAL_RPC=1`이면 `read_anchor`를 실제 NEAR 테스트넷 RPC에 읽기 전용으로 호출하며(키 불필요), 로드 직후 `앵커 전`, 5장면 뒤 `일치 ✓`가 아니면 영상을 덮어쓰지 않고 실패합니다. 빼면 e2e와 같은 모킹으로 오프라인 녹화합니다. 녹화 후 장면별 증거 프레임(PNG)을 `EVIDENCE_DIR`(기본: 저장소 안 `evidence/demo-video/`)에 추출합니다.
 
 정적 검증 페이지 (빌드 없음, http://127.0.0.1:4173/verify/):
 

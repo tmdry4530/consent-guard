@@ -13,3 +13,5 @@ test-results/
 playwright-report/
 blob-report/
 playwright/.cache/
+# Generated script evidence (OUT_DIR / EVIDENCE_DIR override). Keep demo/screens and demo/video.
+evidence/

@@ -26,7 +26,7 @@ const PAUSE = Number(process.env.SCENE_PAUSE_MS ?? 11_000);
 const VIEWPORT = { width: 1280, height: 800 };
 const FPS = 10;
 const OUT = join(repoRoot, "demo/video/consent-guard-demo.webm");
-const EVIDENCE_DIR = process.env.EVIDENCE_DIR ?? resolve(repoRoot, "../evidence/dev2-e2e");
+const EVIDENCE_DIR = process.env.EVIDENCE_DIR ?? join(repoRoot, "evidence/demo-video");
 const MAX_BYTES = 20 * 1024 * 1024;
 const REAL_RPC = process.env.DEMO_REAL_RPC === "1";
 

@@ -1,13 +1,17 @@
 // Screenshots of the demo flow at 1280×800, with an AI-panel layout check. Usage:
-//   BASE_URL=http://127.0.0.1:4173 OUT_DIR=/tmp/shots node apps/web/scripts/screenshot.mjs
+//   BASE_URL=http://127.0.0.1:4173 node apps/web/scripts/screenshot.mjs
+//   OUT_DIR=/tmp/shots node apps/web/scripts/screenshot.mjs   # override output
 // Exits 1 if any AI card is clipped by the AI panel or the viewport.
+// Needs a running web server at BASE_URL (default preview on 4173).
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { resolveChromePath } from "./chromePath.mjs";
 
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../..");
 const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:4173";
-const OUT_DIR = process.env.OUT_DIR ?? "./screenshots";
+const OUT_DIR = process.env.OUT_DIR ?? join(repoRoot, "evidence/web-demo");
 const VIEWPORT = { width: 1280, height: 800 };
 mkdirSync(OUT_DIR, { recursive: true });
 
