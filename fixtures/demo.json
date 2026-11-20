@@ -1,0 +1,73 @@
+{
+  "clock": {
+    "now": 1795172400000,
+    "tenMinMs": 600000
+  },
+  "grants": [
+    {
+      "id": "grant-card-budget",
+      "agentId": "budget-agent",
+      "dataset": "card_tx",
+      "allowFields": ["category", "amount"],
+      "maskFields": ["merchant"],
+      "purposes": ["budgeting"],
+      "maxRangeDays": 90,
+      "expiresAt": 1797764400000
+    },
+    {
+      "id": "grant-allergy-diet",
+      "agentId": "diet-agent",
+      "dataset": "medical_record",
+      "allowFields": ["allergy"],
+      "maskFields": [],
+      "purposes": ["diet_recommendation"],
+      "expiresAt": 1795173000000
+    }
+  ],
+  "requests": [
+    {
+      "id": "req-card-budget",
+      "agentId": "budget-agent",
+      "dataset": "card_tx",
+      "fields": ["category", "amount", "merchant"],
+      "purpose": "budgeting",
+      "rangeDays": 90,
+      "at": 1795172400000
+    },
+    {
+      "id": "req-account-raw",
+      "agentId": "tax-agent",
+      "dataset": "bank_account",
+      "fields": ["account_number"],
+      "purpose": "tax_filing",
+      "at": 1795172400000
+    },
+    {
+      "id": "req-medical-full",
+      "agentId": "health-agent",
+      "dataset": "medical_record",
+      "fields": ["allergy", "diagnosis", "notes"],
+      "purpose": "care_summary",
+      "at": 1795172400000
+    },
+    {
+      "id": "req-allergy-diet",
+      "agentId": "diet-agent",
+      "dataset": "medical_record",
+      "fields": ["allergy"],
+      "purpose": "diet_recommendation",
+      "at": 1795172400000
+    }
+  ],
+  "afterRevoke": {
+    "grant-card-budget": {
+      "id": "req-card-after-revoke",
+      "agentId": "budget-agent",
+      "dataset": "card_tx",
+      "fields": ["category", "amount", "merchant"],
+      "purpose": "budgeting",
+      "rangeDays": 90,
+      "at": 1795172400000
+    }
+  }
+}

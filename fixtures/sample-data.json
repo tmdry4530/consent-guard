@@ -1,0 +1,11 @@
+{
+  "card_tx": [
+    { "merchant": "강남김밥", "category": "식비", "amount": 12000 },
+    { "merchant": "서울교통공사", "category": "교통", "amount": 1500 },
+    { "merchant": "한우명가", "category": "식비", "amount": 45000 },
+    { "merchant": "올리브영 역삼점", "category": "생활", "amount": 23800 }
+  ],
+  "medical_record": [
+    { "allergy": ["땅콩", "새우"], "diagnosis": "고혈압", "notes": "정기 검진 예정" }
+  ]
+}
