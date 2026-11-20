@@ -3,7 +3,8 @@
 // Exits 1 if any AI card is clipped by the AI panel or the viewport.
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "/tmp/c9-video-tools/node_modules/playwright-core/index.mjs";
+import { chromium } from "@playwright/test";
+import { resolveChromePath } from "./chromePath.mjs";
 
 const BASE_URL = process.env.BASE_URL ?? "http://127.0.0.1:4173";
 const OUT_DIR = process.env.OUT_DIR ?? "./screenshots";
@@ -33,7 +34,7 @@ async function checkAiCards(page, label, expectedCards) {
 }
 
 const browser = await chromium.launch({
-  executablePath: "/usr/bin/google-chrome",
+  executablePath: resolveChromePath(),
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 });
 try {

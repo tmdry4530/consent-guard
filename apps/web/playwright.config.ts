@@ -1,12 +1,15 @@
-// Browser e2e for the demo flow. Uses the box's system Chrome (no Playwright browser download)
-// and a local vite dev server started/stopped by Playwright. No network beyond 127.0.0.1.
+// Browser e2e for the demo flow. Uses a system Chrome/Chromium (CHROME_PATH or a common path; no Playwright
+// browser download) and a local vite dev server started/stopped by Playwright. No network beyond 127.0.0.1.
 import { defineConfig } from "@playwright/test";
+import { resolveChromePath } from "./scripts/chromePath.mjs";
 
-const PORT = Number(process.env.E2E_PORT ?? 4173);
+// 4174: keep 4173 free for `verify:serve` / `vite preview`. strictPort + reuseExistingServer:false
+// fail fast if 4174 is already taken (do not attach to some other server).
+const PORT = Number(process.env.E2E_PORT ?? 4174);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 
 const chromeLaunch = {
-  executablePath: process.env.CHROME_PATH ?? "/usr/bin/google-chrome",
+  executablePath: resolveChromePath(),
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 };
 
@@ -28,7 +31,7 @@ export default defineConfig({
   webServer: {
     command: `npx vite --host 127.0.0.1 --port ${PORT} --strictPort`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: 60_000,
   },
 });

@@ -16,6 +16,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chromium } from "@playwright/test";
 import { RPC_URL, mockAnchorRpc, readAnchorStatus, waitForAnchorStatus } from "../e2e/anchorMock.ts";
+import { resolveChromePath } from "./chromePath.mjs";
 
 const webDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = resolve(webDir, "../..");
@@ -103,7 +104,7 @@ let browser;
 try {
   await waitForServer(BASE_URL, 60_000);
   browser = await chromium.launch({
-    executablePath: process.env.CHROME_PATH ?? "/usr/bin/google-chrome",
+    executablePath: resolveChromePath(),
     args: ["--no-sandbox", "--disable-dev-shm-usage"],
   });
   const page = await browser.newPage({ viewport: VIEWPORT, deviceScaleFactor: 1 });
