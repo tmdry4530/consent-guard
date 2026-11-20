@@ -1,8 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DataRequest, Decision, Grant, LedgerEvent } from "../../../packages/policy/src/types";
-import { aiResponses, sampleData, type SampleRow } from "./fixtures";
-import { append, list, verifyChain, type LedgerInput } from "./ledgerAdapter";
-import { approvePending, rejectPending, revokeGrant, type AppState, type RequestEntry, type Transition } from "./state";
+import type { DataRequest, Decision, Grant, LedgerEvent } from "@consent-guard/policy";
+import { append, list, type LedgerInput } from "@consent-guard/ledger/adapter";
+// Not the adapter's verifyChain: that one returns a bare boolean; core's returns { ok, index, reason }.
+import { verifyChain, type VerifyResult } from "@consent-guard/ledger/core";
+import type { ConsentProxy } from "@consent-guard/proxy";
+import { awaitingAi, fetchAi, withAi } from "./ai";
+import { TEN_MIN, sampleData } from "./fixtures";
+import { applyMask, MASK } from "./policyAdapter";
+import {
+  advanceDemoClock,
+  approvePending,
+  rejectPending,
+  revokeGrant,
+  type AppState,
+  type RequestEntry,
+  type Transition,
+} from "./state";
 
 const DECISION_LABEL: Record<Decision, string> = { allow: "허용", deny: "거부", pending: "대기" };
 const KIND_LABEL: Record<LedgerEvent["kind"], string> = {
@@ -13,7 +26,18 @@ const KIND_LABEL: Record<LedgerEvent["kind"], string> = {
   revoke: "철회",
 };
 /** Display safety net: raw identifiers are never rendered, whatever the policy says. */
-const NEVER_DISPLAY = new Set(["account_number", "계좌번호", "rrn", "resident_id", "resident_registration_number", "주민등록번호"]);
+const NEVER_DISPLAY = new Set([
+  "account_number",
+  "card_number",
+  "resident_id",
+  "ssn",
+  "cvv",
+  "password",
+  "계좌번호",
+  "rrn",
+  "resident_registration_number",
+  "주민등록번호",
+]);
 
 const timeFmt = new Intl.DateTimeFormat("ko-KR", {
   timeZone: "Asia/Seoul",
@@ -30,6 +54,21 @@ const dateTimeFmt = new Intl.DateTimeFormat("ko-KR", {
   minute: "2-digit",
   hour12: false,
 });
+const clockFmt = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Asia/Seoul",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+});
+
+/** Demo clock label, e.g. "2026-11-20 20:00 KST". */
+function clockLabel(ms: number): string {
+  const p = Object.fromEntries(clockFmt.formatToParts(ms).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute} KST`;
+}
 
 function remaining(ms: number): string {
   if (ms <= 0) return "만료됨";
@@ -42,41 +81,40 @@ function remaining(ms: number): string {
 interface AppProps {
   initial: AppState;
   initialLedger: LedgerEvent[];
+  /** Consent proxy used to get the AI answer when a request becomes allowed (after 허용). */
+  proxy: ConsentProxy;
   afterRevoke: Record<string, DataRequest>;
-  /** Demo clock origin (fixture NOW); the clock then advances in real time. */
+  /** grantId -> follow-up request enqueued once the demo clock passes that grant's TTL. */
+  afterExpire: Record<string, DataRequest>;
+  /** Demo clock origin (fixture NOW). The clock is frozen; only the "+10분" button advances it. */
   startAt: number;
 }
 
-export function App({ initial, initialLedger, afterRevoke, startAt }: AppProps) {
+export function App({ initial, initialLedger, proxy, afterRevoke, afterExpire, startAt }: AppProps) {
   const [state, setState] = useState(initial);
   const [ledger, setLedger] = useState(initialLedger);
-  const [chainOk, setChainOk] = useState<boolean | null>(null);
+  const [chain, setChain] = useState<VerifyResult | null>(null);
   const [now, setNow] = useState(startAt);
 
-  const realStart = useRef(Date.now());
-  const clock = useCallback(() => startAt + (Date.now() - realStart.current), [startAt]);
+  const nowRef = useRef(startAt);
   const stateRef = useRef(state);
   const ledgerQueue = useRef(Promise.resolve(initialLedger));
-
-  useEffect(() => {
-    const t = setInterval(() => setNow(clock()), 1000);
-    return () => clearInterval(t);
-  }, [clock]);
+  const aiInFlight = useRef(new Set<string>());
 
   useEffect(() => {
     let live = true;
-    verifyChain(ledger).then((ok) => live && setChainOk(ok));
+    verifyChain(ledger).then((r) => live && setChain(r));
     return () => {
       live = false;
     };
   }, [ledger]);
 
+  /** Run a transition at the frozen demo time. */
   const apply = useCallback((make: (s: AppState, at: number) => Transition) => {
-    const t = make(stateRef.current, clock());
+    const t = make(stateRef.current, nowRef.current);
     if (t.state === stateRef.current) return;
     stateRef.current = t.state;
     setState(t.state);
-    setNow(clock());
     const events: LedgerInput[] = t.events;
     // Serialize async hashing so the chain order matches action order.
     ledgerQueue.current = ledgerQueue.current.then(async (chain) => {
@@ -84,7 +122,21 @@ export function App({ initial, initialLedger, afterRevoke, startAt }: AppProps) 
       setLedger(next);
       return next;
     });
-  }, [clock]);
+    // Newly allowed requests (approve): fetch the AI answer once, at decision time, and keep it.
+    const ids = awaitingAi(t.state).filter((id) => !aiInFlight.current.has(id));
+    if (ids.length === 0) return;
+    for (const id of ids) aiInFlight.current.add(id);
+    fetchAi(proxy, t.state, ids, nowRef.current).then((outcomes) => {
+      stateRef.current = withAi(stateRef.current, outcomes);
+      setState(stateRef.current);
+    });
+  }, [proxy]);
+
+  const advanceClock = useCallback(() => {
+    nowRef.current += TEN_MIN;
+    setNow(nowRef.current);
+    apply((s, at) => advanceDemoClock(s, at, afterExpire));
+  }, [apply, afterExpire]);
 
   const followUpFor = (g: Grant): DataRequest | undefined =>
     afterRevoke[g.id] ??
@@ -101,7 +153,13 @@ export function App({ initial, initialLedger, afterRevoke, startAt }: AppProps) 
           <p className="subtitle">내 데이터, 내가 정한 만큼만</p>
         </div>
         <div className="clock">
-          <span className="muted">데모 시계</span> <span className="mono">{timeFmt.format(now)} KST</span>
+          <span className="muted">데모 시계</span>{" "}
+          <span className="mono clock-time" data-testid="demo-clock">
+            {clockLabel(now)}
+          </span>
+          <button className="btn advance" data-testid="advance-clock" onClick={advanceClock}>
+            +10분
+          </button>
         </div>
       </header>
 
@@ -201,9 +259,13 @@ export function App({ initial, initialLedger, afterRevoke, startAt }: AppProps) 
 
         <section className="card span-6" data-testid="audit-log">
           <h2>
-            감사 로그 <span className="tag">mock</span>
-            <span className={`chain ${chainOk === false ? "bad" : "ok"}`}>
-              {chainOk === null ? "검증 중…" : chainOk ? "해시 체인 검증 ✓" : "해시 체인 손상 ✗"}
+            감사 로그
+            <span className={`chain ${chain?.ok === false ? "bad" : "ok"}`} data-testid="chain-status">
+              {chain === null
+                ? "검증 중…"
+                : chain.ok
+                  ? "해시 체인 검증 ✓"
+                  : `해시 체인 손상 ✗ #${chain.index} ${chain.reason}`}
             </span>
           </h2>
           <div className="scroll">
@@ -258,19 +320,24 @@ export function App({ initial, initialLedger, afterRevoke, startAt }: AppProps) 
           {allowed.length === 0 ? (
             <p className="empty">허용된 요청 없음</p>
           ) : (
-            <ul className="list">
-              {allowed.map(({ request: r }) => {
-                const ai = aiResponses.get(r.id);
-                return (
-                  <li key={r.id} className="item">
-                    <div className="row">
-                      <strong>{r.agentId}</strong>
-                      {ai && <span className="badge recorded">recorded</span>}
-                    </div>
-                    {ai ? <p className="ai-text">{ai.text}</p> : <p className="empty small">녹화된 응답 없음 (라이브 모델 호출 안 함)</p>}
-                  </li>
-                );
-              })}
+            <ul className="list ai-list">
+              {allowed.map(({ request: r, ai, aiError }) => (
+                <li key={r.id} className="item ai-card" data-testid={`ai-card-${r.id}`}>
+                  <div className="row">
+                    <strong>{r.agentId}</strong>
+                    {ai && <span className={`badge ${ai.badge}`}>{ai.badge}</span>}
+                  </div>
+                  {ai ? (
+                    <p className="ai-text">{ai.text}</p>
+                  ) : aiError !== undefined ? (
+                    <p className="empty small" title={aiError}>
+                      AI 응답 없음 (라이브 모델 호출 안 함)
+                    </p>
+                  ) : (
+                    <p className="empty small">AI 응답 대기 중…</p>
+                  )}
+                </li>
+              ))}
             </ul>
           )}
         </section>
@@ -315,16 +382,17 @@ function Fields({ fields, masked = [] }: { fields: string[]; masked?: string[] }
   );
 }
 
-function cell(row: SampleRow, field: string, masked: boolean): string {
-  if (masked || NEVER_DISPLAY.has(field)) return "***";
+function cell(row: Record<string, unknown>, field: string): string {
+  if (NEVER_DISPLAY.has(field)) return MASK;
   const v = row[field];
-  if (v === undefined) return "—";
   if (Array.isArray(v)) return v.join(", ");
-  return typeof v === "number" ? v.toLocaleString("ko-KR") : v;
+  return typeof v === "number" ? v.toLocaleString("ko-KR") : String(v);
 }
 
 function Released({ entry: { request: r, result } }: { entry: RequestEntry }) {
-  const rows = sampleData[r.dataset];
+  const sample = sampleData[r.dataset];
+  // Only what the policy released: passFields as-is, maskFields replaced by "***".
+  const rows = sample ? applyMask(sample, result) : undefined;
   const columns = r.fields.filter((f) => result.passFields.includes(f) || result.maskFields.includes(f));
   return (
     <div className="released">
@@ -346,14 +414,13 @@ function Released({ entry: { request: r, result } }: { entry: RequestEntry }) {
           <tbody>
             {rows.map((row, i) => (
               <tr key={i}>
-                {columns.map((c) => {
-                  const masked = result.maskFields.includes(c);
-                  return (
-                    <td key={c} className={masked ? "masked" : ""}>
-                      {cell(row, c, masked)}
+                {columns.map((c) =>
+                  Object.hasOwn(row, c) ? (
+                    <td key={c} className={row[c] === MASK ? "masked" : ""}>
+                      {cell(row, c)}
                     </td>
-                  );
-                })}
+                  ) : null,
+                )}
               </tr>
             ))}
           </tbody>

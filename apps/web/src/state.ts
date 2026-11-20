@@ -1,6 +1,7 @@
 // Pure app state transitions. Each returns the next state plus the ledger inputs to append.
-import type { DataRequest, Grant, PolicyResult } from "../../../packages/policy/src/types";
-import type { LedgerInput } from "./ledgerAdapter";
+import type { DataRequest, Grant, PolicyResult } from "@consent-guard/policy";
+import type { LedgerInput } from "@consent-guard/ledger/adapter";
+import type { ProxyAiResult } from "@consent-guard/proxy";
 import { evaluate } from "./policyAdapter";
 
 export const APPROVED_GRANT_TTL_MS = 60 * 60 * 1000;
@@ -10,11 +11,20 @@ export interface RequestEntry {
   result: PolicyResult;
   /** Set when the user resolved a pending request from the approval queue. */
   resolvedBy?: "approve" | "reject";
+  /** AI answer obtained through the consent proxy at the moment the request was allowed; kept as history. */
+  ai?: ProxyAiResult;
+  /** Set instead of `ai` when the proxy/adapter failed (e.g. no recorded answer for this id). */
+  aiError?: string;
 }
 
 export interface AppState {
   requests: RequestEntry[];
   grants: Grant[];
+  /**
+   * Request ids the real policy engine has already evaluated (replay protection).
+   * evaluate() mutates the set it is given, so transitions always pass a clone and store it.
+   */
+  seenRequestIds: ReadonlySet<string>;
 }
 
 export interface Transition {
@@ -36,18 +46,22 @@ function updateEntry(state: AppState, id: string, entry: RequestEntry): AppState
   return { ...state, requests: state.requests.map((e) => (e.request.id === id ? entry : e)) };
 }
 
-/** Replay protection: a request id that was already decided is ignored (no new evaluation, no events). */
+/**
+ * Evaluate a new request. Feed-level dedupe: an id already in the feed is ignored (no second
+ * row, no events). Any other id goes through the real engine's replay check via seenRequestIds.
+ */
 export function submitRequest(state: AppState, req: DataRequest, now: number): Transition {
   if (state.requests.some((e) => e.request.id === req.id)) return { state, events: [] };
-  const result = evaluate(req, state.grants, now);
+  const seenRequestIds = new Set(state.seenRequestIds);
+  const result = evaluate(req, state.grants, now, { seenRequestIds });
   return {
-    state: { ...state, requests: [...state.requests, { request: req, result }] },
+    state: { ...state, seenRequestIds, requests: [...state.requests, { request: req, result }] },
     events: [decisionEvent(req, result, now)],
   };
 }
 
 export function initialState(grants: Grant[], requests: DataRequest[], now: number): Transition {
-  let state: AppState = { requests: [], grants };
+  let state: AppState = { requests: [], grants, seenRequestIds: new Set() };
   const events: LedgerInput[] = grants.map((g) => grantEvent("grant", g, now));
   for (const req of requests) {
     const t = submitRequest(state, req, now);
@@ -78,10 +92,14 @@ export function approvePending(state: AppState, requestId: string, now: number):
     ...(req.maxRows !== undefined && { maxRows: req.maxRows }),
   };
   const grants = [...state.grants, grant];
-  // Re-evaluation of an already-decided id is allowed here because the grant set changed.
-  const result = evaluate(req, grants, now);
+  // The pending evaluation already burned req.id in the seen set. Owner approval after a
+  // pending decision is a grant change, not a replay, so un-burn the id and re-evaluate the
+  // same request against the new grants (evaluate re-adds the id).
+  const seenRequestIds = new Set(state.seenRequestIds);
+  seenRequestIds.delete(req.id);
+  const result = evaluate(req, grants, now, { seenRequestIds });
   return {
-    state: updateEntry({ ...state, grants }, req.id, { request: req, result, resolvedBy: "approve" }),
+    state: updateEntry({ ...state, grants, seenRequestIds }, req.id, { request: req, result, resolvedBy: "approve" }),
     events: [grantEvent("grant", grant, now), decisionEvent(req, result, now)],
   };
 }
@@ -115,4 +133,22 @@ export function revokeGrant(state: AppState, grantId: string, now: number, follo
   if (!followUp) return { state: next, events };
   const t = submitRequest(next, { ...followUp, at: now }, now);
   return { state: t.state, events: [...events, ...t.events] };
+}
+
+/**
+ * The demo clock moved to `newNow`. Past decisions are history and are not rewritten. For every
+ * non-revoked grant whose TTL has passed, its `afterExpire` follow-up (if any, and not already in
+ * the feed) is enqueued at `newNow` and evaluated — the real policy denies it as expired.
+ */
+export function advanceDemoClock(state: AppState, newNow: number, afterExpire: Record<string, DataRequest>): Transition {
+  let next = state;
+  const events: LedgerInput[] = [];
+  for (const g of state.grants) {
+    const followUp = afterExpire[g.id];
+    if (!followUp || g.revokedAt !== undefined || g.expiresAt > newNow) continue;
+    const t = submitRequest(next, { ...followUp, at: newNow }, newNow);
+    next = t.state;
+    events.push(...t.events);
+  }
+  return { state: next, events };
 }

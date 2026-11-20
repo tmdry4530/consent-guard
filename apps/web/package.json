@@ -11,6 +11,9 @@
     "screenshot": "node scripts/screenshot.mjs"
   },
   "dependencies": {
+    "@consent-guard/ledger": "*",
+    "@consent-guard/policy": "*",
+    "@consent-guard/proxy": "*",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
