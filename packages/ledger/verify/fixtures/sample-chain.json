@@ -1,0 +1,68 @@
+[
+  {
+    "seq": 1,
+    "kind": "grant",
+    "at": 1795165200000,
+    "agentId": "budget-agent",
+    "dataset": "card_tx",
+    "fields": [
+      "category",
+      "amount",
+      "merchant"
+    ],
+    "refId": "grant-001",
+    "prevHash": "0000000000000000000000000000000000000000000000000000000000000000",
+    "hash": "9212e28c8897c0eabdbeed006a55aef37b572f54dfc8a3b61a12b028488afb10"
+  },
+  {
+    "seq": 2,
+    "kind": "access",
+    "at": 1795165260000,
+    "agentId": "budget-agent",
+    "dataset": "card_tx",
+    "fields": [
+      "category",
+      "amount"
+    ],
+    "refId": "req-101",
+    "prevHash": "9212e28c8897c0eabdbeed006a55aef37b572f54dfc8a3b61a12b028488afb10",
+    "hash": "fc36ebf78b576bcaaa841f5819453312afc3e8ee0a72109680842b583d099a23"
+  },
+  {
+    "seq": 3,
+    "kind": "deny",
+    "at": 1795165320000,
+    "agentId": "diet-agent",
+    "dataset": "medical_record",
+    "fields": [
+      "diagnosis"
+    ],
+    "refId": "req-102",
+    "prevHash": "fc36ebf78b576bcaaa841f5819453312afc3e8ee0a72109680842b583d099a23",
+    "hash": "1f788f6c154014d7913bc8c0dd60dc6629d67bb0811b512e52b7f4c7d611b8b2"
+  },
+  {
+    "seq": 4,
+    "kind": "pending",
+    "at": 1795165380000,
+    "agentId": "travel-agent",
+    "dataset": "location",
+    "fields": [
+      "city"
+    ],
+    "refId": "req-103",
+    "prevHash": "1f788f6c154014d7913bc8c0dd60dc6629d67bb0811b512e52b7f4c7d611b8b2",
+    "hash": "125144a634c87c3763c49537a943de2c72b524565124f0550845cfc8b9fae4ac"
+  },
+  {
+    "seq": 5,
+    "kind": "revoke",
+    "at": 1795165440000,
+    "agentId": "budget-agent",
+    "dataset": "card_tx",
+    "fields": [],
+    "refId": "grant-001",
+    "prevHash": "125144a634c87c3763c49537a943de2c72b524565124f0550845cfc8b9fae4ac",
+    "hash": "85c3a623b71c66b803e8dfdb20ff54fa09c3ceac8f2deca58a9b7d637c4228ce"
+  }
+]
