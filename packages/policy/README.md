@@ -33,7 +33,7 @@ applyMask(rows, result)                            // keep passFields + maskFiel
 10. **Allow** with `grantId`.
 
 Deny/pending results have empty `passFields`/`maskFields` and carry `grantId` when a grant was involved.
-Every result has an English `reason` meant for display.
+Every result has a Korean `reason` meant for display (e.g. `grant-card-budget 권한으로 허용(가림: merchant)`, `diet-agent/medical_record: grant-allergy-diet 권한이 만료됨`, `이미 처리된 요청 id(재요청 차단): req-x`).
 
 ## Scripts
 

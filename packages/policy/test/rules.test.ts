@@ -47,7 +47,7 @@ test("replay via createPolicyEngine: same id is denied the second time", () => {
   assert.equal(engine.evaluate(request(), [grant()], NOW).decision, "allow");
   const again = engine.evaluate(request(), [grant()], NOW);
   assert.equal(again.decision, "deny");
-  assert.match(again.reason, /replay/);
+  assert.match(again.reason, /재요청/);
   assert.equal(engine.evaluate(request({ id: "r2" }), [grant()], NOW).decision, "allow");
   // engines do not share state
   assert.equal(createPolicyEngine().evaluate(request(), [grant()], NOW).decision, "allow");
@@ -61,7 +61,7 @@ test("replay via seenRequestIds: checks, then records the id", () => {
   // a denied request id is also burned
   const bad = request({ id: "r9", fields: ["card_number"] });
   evaluate(bad, [grant()], NOW, { seenRequestIds: seen });
-  assert.match(evaluate(request({ id: "r9" }), [grant()], NOW, { seenRequestIds: seen }).reason, /replay/);
+  assert.match(evaluate(request({ id: "r9" }), [grant()], NOW, { seenRequestIds: seen }).reason, /재요청/);
   // without opts evaluate is pure
   assert.equal(evaluate(request(), [grant()], NOW).decision, "allow");
 });
@@ -70,7 +70,7 @@ test("forbidden raw field is denied even if the grant allows it", () => {
   const g = grant({ allowFields: ["category", "amount", "card_number"] });
   const r = evaluate(request({ fields: ["amount", "card_number"] }), [g], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /card_number/);
+  assert.match(r.reason, /원문 금지.*card_number/);
   assert.equal(r.grantId, undefined);
 });
 
@@ -82,20 +82,20 @@ test("forbidden field beats missing grant on a sensitive dataset", () => {
 test("grants for another agent or dataset are ignored", () => {
   const r = evaluate(request(), [grant({ agentId: "other" }), grant({ dataset: "bank_tx" })], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /No grant/);
+  assert.match(r.reason, /권한 없음/);
 });
 
 test("revoked takes precedence over expired", () => {
   const g = grant({ revokedAt: NOW - 2 * HOUR, expiresAt: NOW - HOUR });
   const r = evaluate(request(), [g], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /revoked/);
+  assert.match(r.reason, /철회/);
   assert.equal(r.grantId, "g1");
 });
 
 test("revocation in the future is not yet effective; revokedAt == now is", () => {
   assert.equal(evaluate(request(), [grant({ revokedAt: NOW + 1 })], NOW).decision, "allow");
-  assert.match(evaluate(request(), [grant({ revokedAt: NOW })], NOW).reason, /revoked/);
+  assert.match(evaluate(request(), [grant({ revokedAt: NOW })], NOW).reason, /철회/);
 });
 
 test("one live grant survives a revoked sibling", () => {
@@ -107,13 +107,13 @@ test("one live grant survives a revoked sibling", () => {
 test("expired: expiresAt == now counts as expired", () => {
   const r = evaluate(request(), [grant({ expiresAt: NOW })], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /expired/);
+  assert.match(r.reason, /만료/);
   assert.equal(r.grantId, "g1");
 });
 
 test("revoked + expired mix where none is revoked-only reports expired", () => {
   const r = evaluate(request(), [grant({ id: "a", revokedAt: NOW - 1 }), grant({ id: "b", expiresAt: NOW - 1 })], NOW);
-  assert.match(r.reason, /expired/);
+  assert.match(r.reason, /만료/);
   assert.equal(r.grantId, "b");
 });
 
@@ -127,13 +127,13 @@ test("location is sensitive: pending without a grant", () => {
 test("non-sensitive dataset without a grant is denied", () => {
   const r = evaluate(request(), [], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /No grant/);
+  assert.match(r.reason, /권한 없음/);
 });
 
 test("purpose mismatch is denied", () => {
   const r = evaluate(request({ purpose: "marketing" }), [grant()], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /Purpose "marketing"/);
+  assert.match(r.reason, /용도 불일치: marketing/);
   assert.equal(r.grantId, "g1");
 });
 
@@ -146,14 +146,14 @@ test("purpose picks the matching grant among several", () => {
 test("rangeDays over limit is denied; equal passes", () => {
   const r = evaluate(request({ rangeDays: 91 }), [grant()], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /range of 91 days.*90 days/);
+  assert.match(r.reason, /기간 91일.*90일/);
   assert.equal(evaluate(request({ rangeDays: 90 }), [grant()], NOW).decision, "allow");
 });
 
 test("maxRows over limit is denied; equal passes", () => {
   const r = evaluate(request({ maxRows: 501 }), [grant()], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /501 rows.*500 rows/);
+  assert.match(r.reason, /501행.*500행/);
   assert.equal(evaluate(request({ maxRows: 500 }), [grant()], NOW).decision, "allow");
 });
 
@@ -165,7 +165,7 @@ test("limits absent on the grant are not enforced", () => {
 test("unknown field is denied and listed", () => {
   const r = evaluate(request({ fields: ["amount", "card_holder", "memo"] }), [grant()], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /card_holder, memo/);
+  assert.match(r.reason, /허용되지 않은 필드: card_holder, memo/);
   assert.deepEqual(r.passFields, []);
   assert.equal(r.grantId, "g1");
 });
