@@ -16,6 +16,7 @@ import {
   EXPECTED_ANCHOR_BLOCK,
   EXPECTED_FINAL_COUNT,
   EXPECTED_FINAL_HEAD,
+  mockAnchorView,
   resolveAnchorConfig,
 } from "../src/anchorConfig";
 
@@ -156,4 +157,25 @@ test("config: defaults, env overrides, and ?rpc/&contract runtime overrides", ()
   assert.equal(e.txUrl, "https://testnet.nearblocks.io/txns/HASH123");
   assert.equal(e.accountUrl, "https://testnet.nearblocks.io/address/c.testnet");
   assert.equal(resolveAnchorConfig({}, "?rpc=http://127.0.0.1:9/").rpcUrl, "http://127.0.0.1:9/");
+});
+
+test("config: mock mode via ?mock=1 / ?mock=true / VITE_ANCHOR_MOCK, off by default and for ?mock=0", () => {
+  assert.equal(resolveAnchorConfig().mock, false);
+  assert.equal(resolveAnchorConfig({}, "?mock=0").mock, false);
+  assert.equal(resolveAnchorConfig({ VITE_ANCHOR_MOCK: "0" }).mock, false);
+  assert.equal(resolveAnchorConfig({}, "?mock=1").mock, true);
+  assert.equal(resolveAnchorConfig({}, "?mock=true").mock, true);
+  assert.equal(resolveAnchorConfig({ VITE_ANCHOR_MOCK: "1" }).mock, true);
+  assert.equal(resolveAnchorConfig({ VITE_ANCHOR_MOCK: "true" }).mock, true);
+});
+
+test("mock: canned anchor is the final demo anchor and matches the finished demo ledger", () => {
+  const view = mockAnchorView();
+  assert.equal(view.headHash, "259dbd26b973e4a7e8252488ce2a4d97d532f8355825b4edc3722c97b20fa95b");
+  assert.equal(view.count, 11);
+  assert.equal(view.blockHeight, 278539285);
+  assert.equal(view.timestampMs, Date.UTC(2026, 10, 20, 13, 41, 52));
+  const r = compareLive({ kind: "read", anchor: view }, { count: 11, head: EXPECTED_FINAL_HEAD, chainOk: true });
+  assert.equal(r.kind, "match");
+  assert.match(r.label, /일치 ✓/);
 });

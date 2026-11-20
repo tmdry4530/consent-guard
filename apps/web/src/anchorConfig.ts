@@ -1,6 +1,8 @@
 // NEAR testnet anchor settings for the audit-log anchor status (read-only public RPC view call).
 // Build-time overrides: VITE_NEAR_RPC_URL, VITE_ANCHOR_CONTRACT_ID, VITE_ANCHOR_TX_URL (full URL or tx hash),
-// VITE_EXPLORER_BASE. Runtime overrides (screenshots/mocks, no rebuild): `?rpc=<url>&contract=<id>`.
+// VITE_EXPLORER_BASE, VITE_ANCHOR_MOCK=1. Runtime overrides (screenshots/mocks, no rebuild):
+// `?rpc=<url>&contract=<id>`, `?mock=1` (offline stand-in: no RPC call, canned final demo anchor).
+import type { AnchorView } from "@consent-guard/ledger/core";
 
 export interface AnchorConfig {
   rpcUrl: string;
@@ -10,6 +12,8 @@ export interface AnchorConfig {
   /** Explorer link to the anchor contract account. */
   accountUrl: string;
   timeoutMs: number;
+  /** Offline stand-in: skip the RPC and use mockAnchorView(). */
+  mock: boolean;
 }
 
 export const DEFAULT_RPC_URL = "https://rpc.testnet.near.org";
@@ -24,6 +28,18 @@ export const EXPECTED_FINAL_HEAD = "259dbd26b973e4a7e8252488ce2a4d97d532f8355825
 export const EXPECTED_FINAL_COUNT = 11;
 export const EXPECTED_ANCHOR_BLOCK = 278_539_285;
 export const DEFAULT_TIMEOUT_MS = 5000;
+/** Timestamp of the DEFAULT_ANCHOR_TX block (2026-11-20 22:41:52 KST), as in e2e/anchorMock.ts. */
+export const MOCK_ANCHOR_TIMESTAMP_MS = Date.UTC(2026, 10, 20, 13, 41, 52);
+
+/** Canned read_anchor result for mock mode: the same final demo anchor as DEFAULT_ANCHOR_TX. */
+export function mockAnchorView(): AnchorView {
+  return {
+    headHash: EXPECTED_FINAL_HEAD,
+    count: EXPECTED_FINAL_COUNT,
+    blockHeight: EXPECTED_ANCHOR_BLOCK,
+    timestampMs: MOCK_ANCHOR_TIMESTAMP_MS,
+  };
+}
 
 type Env = Partial<Record<string, string | boolean | undefined>>;
 
@@ -44,6 +60,7 @@ export function resolveAnchorConfig(env: Env = {}, search = ""): AnchorConfig {
     txUrl: /^https?:\/\//.test(tx) ? tx : `${explorer}/txns/${encodeURIComponent(tx)}`,
     accountUrl: `${explorer}/address/${encodeURIComponent(contractId)}`,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    mock: [params.get("mock"), env.VITE_ANCHOR_MOCK].some((v) => v === "1" || v === "true"),
   };
 }
 

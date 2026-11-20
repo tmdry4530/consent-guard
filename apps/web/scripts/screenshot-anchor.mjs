@@ -12,7 +12,8 @@ import { spawn } from "node:child_process";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "/tmp/c9-video-tools/node_modules/playwright-core/index.mjs";
+import { chromium } from "@playwright/test";
+import { resolveChromePath } from "./chromePath.mjs";
 
 const PORT = Number(process.env.PORT ?? 4177);
 const OUT_DIR = process.env.OUT_DIR ?? "/workspace/company/dev3-logs/nesa-final-anchor-evidence/";
@@ -113,7 +114,7 @@ async function shoot(browser, name, scene, waitText, setupRoute) {
 }
 
 const browser = await chromium.launch({
-  executablePath: "/usr/bin/google-chrome",
+  executablePath: resolveChromePath(),
   args: ["--no-sandbox", "--disable-dev-shm-usage"],
 });
 try {

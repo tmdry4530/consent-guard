@@ -8,7 +8,10 @@
     "test": "npm test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "demo:cli": "node packages/integration/scripts/demo-cli.ts",
-    "e2e": "npm run e2e -w @consent-guard/web"
+    "e2e": "npm run e2e -w @consent-guard/web",
+    "dev": "npm run dev -w @consent-guard/web",
+    "build": "npm run build -w @consent-guard/web",
+    "preview": "npm run preview -w @consent-guard/web"
   },
   "devDependencies": { "@types/node": "^24.0.0", "typescript": "^5.8.0" }
 }

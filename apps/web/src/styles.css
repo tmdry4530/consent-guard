@@ -184,6 +184,16 @@ body {
   font-size: 10.5px;
   line-height: 1.35;
 }
+.anchor-mock {
+  display: inline-block;
+  margin-bottom: 2px;
+  padding: 0 6px;
+  border: 1px dashed var(--pending);
+  border-radius: 4px;
+  background: var(--pending-bg);
+  color: var(--pending);
+  font-weight: 700;
+}
 
 .list,
 .scroll {

@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { verifyChain } from "@consent-guard/ledger/core";
-import { EXPECTED_FINAL_COUNT, EXPECTED_FINAL_HEAD } from "../src/anchorConfig";
+import { EXPECTED_FINAL_COUNT, EXPECTED_FINAL_HEAD, mockAnchorView } from "../src/anchorConfig";
 import { compareLive, type AnchorRead } from "../src/anchorStatus";
 import { runDemoScenario } from "../src/demoScenario";
 
@@ -45,4 +45,11 @@ test("scenario: the steps produce the demo's story (approve, expire, revoke + de
     final.ledger.map((e) => e.kind),
     ["grant", "grant", "access", "deny", "pending", "access", "grant", "access", "deny", "revoke", "deny"],
   );
+});
+
+test("mock: mockAnchorView() is the head/count the full demo actually ends at", async () => {
+  const final = (await runDemoScenario()).at(-1)!.ledger;
+  const view = mockAnchorView();
+  assert.equal(final.length, view.count);
+  assert.equal(final.at(-1)!.hash, view.headHash);
 });
