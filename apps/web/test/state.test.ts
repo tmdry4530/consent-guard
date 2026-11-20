@@ -69,7 +69,7 @@ test("advancing the clock by 10 min expires the diet grant and denies its follow
   const followUp = t.state.requests.find((e) => e.request.id === "req-allergy-after-expire");
   assert.equal(followUp?.result.decision, "deny");
   assert.equal(followUp?.request.at, later);
-  assert.match(followUp?.result.reason ?? "", /grant-allergy-diet.*expired/);
+  assert.match(followUp?.result.reason ?? "", /grant-allergy-diet 권한이 만료/);
   // History is not rewritten.
   assert.equal(decisionOf(t.state, "req-allergy-diet"), "allow");
 
@@ -82,7 +82,7 @@ test("advancing the clock by 10 min expires the diet grant and denies its follow
 test("direct evaluate of the after-expire follow-up at NOW+10min is deny", () => {
   const r = evaluate(demo.afterExpire["grant-allergy-diet"], demo.grants, NOW + TEN_MIN);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /expired/);
+  assert.match(r.reason, /만료/);
 });
 
 test("revoke action is offered only for active grants; expired diet grant after +10 min is not revocable", () => {

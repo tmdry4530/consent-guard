@@ -46,7 +46,7 @@ export function evaluate(
   const seen = opts?.seenRequestIds;
   if (seen) {
     if (seen.has(req.id)) {
-      return refuse("deny", req, `Request ${req.id} was already processed (replay rejected).`);
+      return refuse("deny", req, `이미 처리된 요청 id(재요청 차단): ${req.id}`);
     }
     seen.add(req.id);
   }
@@ -56,7 +56,7 @@ export function evaluate(
   // 2. Forbidden raw fields, regardless of grants.
   const forbidden = fields.filter((f) => FORBIDDEN_RAW_FIELDS.includes(f));
   if (forbidden.length > 0) {
-    return refuse("deny", req, `Raw field(s) ${list(forbidden)} may never be shared with agents.`);
+    return refuse("deny", req, `원문 금지 필드 요청: ${list(forbidden)}`);
   }
 
   // 3. Grants for this agent and dataset.
@@ -66,22 +66,22 @@ export function evaluate(
   const live = matching.filter((g) => !(g.revokedAt !== undefined && g.revokedAt <= now));
   if (matching.length > 0 && live.length === 0) {
     const g = matching[matching.length - 1]!;
-    return refuse("deny", req, `Grant ${g.id} for ${req.agentId} on ${req.dataset} was revoked by the owner.`, g.id);
+    return refuse("deny", req, `${req.agentId}/${req.dataset}: ${g.id} 권한이 철회됨`, g.id);
   }
 
   // 5. Expired grants.
   const usable = live.filter((g) => g.expiresAt > now);
   if (live.length > 0 && usable.length === 0) {
     const g = live[live.length - 1]!;
-    return refuse("deny", req, `Grant ${g.id} for ${req.agentId} on ${req.dataset} has expired.`, g.id);
+    return refuse("deny", req, `${req.agentId}/${req.dataset}: ${g.id} 권한이 만료됨`, g.id);
   }
 
   // 6. No grant at all.
   if (usable.length === 0) {
     if (SENSITIVE_DATASETS.includes(req.dataset)) {
-      return refuse("pending", req, `Sensitive dataset ${req.dataset} needs owner approval for ${req.agentId}.`);
+      return refuse("pending", req, `${req.agentId}: 민감 데이터셋(${req.dataset})은 소유자 승인이 필요함`);
     }
-    return refuse("deny", req, `No grant lets ${req.agentId} read ${req.dataset}.`);
+    return refuse("deny", req, `권한 없음: ${req.agentId}의 ${req.dataset} 열람 권한이 없음`);
   }
 
   // 7. Purpose.
@@ -91,7 +91,7 @@ export function evaluate(
     return refuse(
       "deny",
       req,
-      `Purpose "${req.purpose}" is not allowed for ${req.dataset} (allowed: ${list(g.purposes) || "none"}).`,
+      `용도 불일치: ${req.purpose} 용도는 ${req.dataset}에 허용되지 않음(허용 용도: ${list(g.purposes) || "없음"})`,
       g.id,
     );
   }
@@ -101,7 +101,7 @@ export function evaluate(
     return refuse(
       "deny",
       req,
-      `Requested range of ${req.rangeDays} days exceeds the grant limit of ${grant.maxRangeDays} days.`,
+      `요청 기간 ${req.rangeDays}일이 허용 ${grant.maxRangeDays}일을 초과함`,
       grant.id,
     );
   }
@@ -109,7 +109,7 @@ export function evaluate(
     return refuse(
       "deny",
       req,
-      `Requested ${req.maxRows} rows exceeds the grant limit of ${grant.maxRows} rows.`,
+      `최대 행 수 초과: 요청 ${req.maxRows}행이 허용 ${grant.maxRows}행을 초과함`,
       grant.id,
     );
   }
@@ -117,20 +117,20 @@ export function evaluate(
   // 9. Fields.
   const unknown = fields.filter((f) => !grant.allowFields.includes(f) && !grant.maskFields.includes(f));
   if (unknown.length > 0) {
-    return refuse("deny", req, `Field(s) ${list(unknown)} are not covered by grant ${grant.id}.`, grant.id);
+    return refuse("deny", req, `허용되지 않은 필드: ${list(unknown)}(${grant.id} 권한 범위 밖임)`, grant.id);
   }
   const maskFields = fields.filter((f) => grant.maskFields.includes(f));
   const passFields = fields.filter((f) => grant.allowFields.includes(f) && !grant.maskFields.includes(f));
 
   // 10. Allow.
-  const masked = maskFields.length > 0 ? `; masked: ${list(maskFields)}` : "";
+  const masked = maskFields.length > 0 ? `(가림: ${list(maskFields)})` : "";
   return {
     decision: "allow",
     requestId: req.id,
     grantId: grant.id,
     passFields,
     maskFields,
-    reason: `Allowed by grant ${grant.id} for purpose "${req.purpose}" (fields: ${list(passFields) || "none"}${masked}).`,
+    reason: `${grant.id} 권한으로 허용${masked}`,
   };
 }
 

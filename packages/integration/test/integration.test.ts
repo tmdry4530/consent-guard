@@ -42,9 +42,9 @@ test("decisions per scene", () => {
   );
   for (const o of requests) assert.equal(o.result.policy.decision, o.expect, o.request.id);
   const expired = requests.find((o) => o.request.id === "req-allergy-diet-expired");
-  assert.match(expired!.result.policy.reason, /expired/);
+  assert.match(expired!.result.policy.reason, /만료/);
   const revoked = requests.find((o) => o.request.id === "req-card-after-revoke");
-  assert.match(revoked!.result.policy.reason, /revoked/);
+  assert.match(revoked!.result.policy.reason, /철회/);
 });
 
 test("raw merchant and account_number never leave the proxy", () => {

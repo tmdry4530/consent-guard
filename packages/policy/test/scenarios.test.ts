@@ -73,7 +73,7 @@ test("b) budget-agent asking for account_number is denied", () => {
   };
   const r = evaluate(req, [budgetGrant], NOW);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /account_number/);
+  assert.match(r.reason, /원문 금지.*account_number/);
   assert.deepEqual(r.passFields, []);
   assert.deepEqual(r.maskFields, []);
 });
@@ -89,7 +89,7 @@ test("c) health-agent medical_record without grant is pending", () => {
   };
   const r = evaluate(req, [budgetGrant, dietGrant], NOW);
   assert.equal(r.decision, "pending");
-  assert.match(r.reason, /owner approval/);
+  assert.match(r.reason, /승인/);
   assert.equal(r.grantId, undefined);
 });
 
@@ -103,7 +103,7 @@ test("d) diet-agent allowed within TTL, denied once expired", () => {
   const later = NOW + 11 * MIN;
   const expired = evaluate(dietReq("r-d2", later), [dietGrant], later);
   assert.equal(expired.decision, "deny");
-  assert.match(expired.reason, /expired/);
+  assert.match(expired.reason, /만료/);
   assert.equal(expired.grantId, "g-diet");
 });
 
@@ -112,6 +112,6 @@ test("e) diet-agent denied after the grant is revoked", () => {
   const at = NOW + 2 * MIN;
   const r = evaluate(dietReq("r-e", at), [revoked], at);
   assert.equal(r.decision, "deny");
-  assert.match(r.reason, /revoked/);
+  assert.match(r.reason, /철회/);
   assert.equal(r.grantId, "g-diet");
 });
