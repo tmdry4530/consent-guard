@@ -54,7 +54,8 @@ The existing `tee-receipts-chamdom.testnet` is the TEE receipts contract (`get_o
 - Contract account: **`consent-guard-anchor.tee-receipts-chamdom.testnet`** (subaccount of `tee-receipts-chamdom.testnet`; the parent's receipts contract is unchanged). Owner = the contract account itself. Override with `--contract` / `CONSENT_GUARD_ANCHOR_CONTRACT_ID` and `--owner` / `CONSENT_GUARD_ANCHOR_OWNER_ID`.
 - create-account tx: [`Egr1KaBsiDfVuTgq8TaRKMttNHyr97fcwd1Gd7LpWTcx`](https://testnet.nearblocks.io/txns/Egr1KaBsiDfVuTgq8TaRKMttNHyr97fcwd1Gd7LpWTcx)
 - deploy + `new` tx: [`Goyrf4qdzTjQB8Pn73J9G7vFsQGtU5dccZ37SZXUrUyE`](https://testnet.nearblocks.io/txns/Goyrf4qdzTjQB8Pn73J9G7vFsQGtU5dccZ37SZXUrUyE) (account code_hash `4pLnb1fWbixBoE4MeeMTAFadeBaeiX9L4STasCvq7nic`)
-- anchor tx (sample fixture, 5 events, head `85c3a623b71c66b803e8dfdb20ff54fa09c3ceac8f2deca58a9b7d637c4228ce`): [`Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE`](https://testnet.nearblocks.io/txns/Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE)
+- first anchor tx (sample fixture, 5 events, head `85c3a623b71c66b803e8dfdb20ff54fa09c3ceac8f2deca58a9b7d637c4228ce`, block 278,537,646): [`Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE`](https://testnet.nearblocks.io/txns/Gx1HfEQYRQh9RwLr1DJstmV6m6dJEaCFQ3RnXM39bHhE)
+- **current anchor tx** (final demo ledger: all 5 web demo scenes played to the end on the fixed demo clock, 11 events, head `259dbd26b973e4a7e8252488ce2a4d97d532f8355825b4edc3722c97b20fa95b`, block 278,539,285, 2026-11-20 22:41:52 KST): [`51udtFvQ4Po2E4Pj6H2gTTKAvK2VRKCGgBeAN7A25P2y`](https://testnet.nearblocks.io/txns/51udtFvQ4Po2E4Pj6H2gTTKAvK2VRKCGgBeAN7A25P2y). `read_anchor` now returns this head; the web audit log shows "11건 중 N건 · 앵커 전" until the demo reaches scene 5, then "현재 장부 = 온체인 앵커 일치 ✓".
 - The signing key lives only in `~/.near-credentials/testnet/` (mode 0600) on the shared box and is never committed or printed.
 
 Build/test (wasm is committed, so this is only needed after contract changes):
@@ -102,6 +103,17 @@ Screenshots: `node scripts/screenshot-verify.mjs` (playwright-core from `/tmp/c9
 `apps/web` imports `@consent-guard/ledger/adapter` (browser-safe ESM: `src/adapter.js` + `src/core.js`, no `node:` imports, so Vite bundles it as-is). For the richer API import `@consent-guard/ledger` or `@consent-guard/ledger/core`; there `verifyChain` returns `{ ok: true } | { ok: false, index, reason }`.
 
 On-chain anchoring is not part of the web adapter. Use `scripts/anchor.mjs` (or `createAnchorAdapter`) from Node, and check the result on the verify page against the live contract above.
+
+The audit log's anchor badge (`apps/web/src/anchorStatus.ts`) only reads: one public `read_anchor` view call, compared on every render with the live demo ledger's count and head. The canonical demo steps live in `apps/web/src/demoScenario.ts`; `apps/web/test/demoScenario.test.ts` asserts the final head equals the anchored constant in `apps/web/src/anchorConfig.ts`. If a fixture or state change moves the final head, that test fails; re-anchor with:
+
+```bash
+# from apps/web: export the final demo ledger, then dry-run / execute from packages/ledger
+npx tsx -e 'import("./src/demoScenario.ts").then(async m=>{const f=(await m.runDemoScenario()).at(-1);require("fs").writeFileSync("/tmp/demo-final-ledger.json",JSON.stringify(f.ledger))})'
+node scripts/anchor.mjs --events /tmp/demo-final-ledger.json --read
+CONSENT_GUARD_ALLOW_TESTNET_WRITE=1 node scripts/anchor.mjs --events /tmp/demo-final-ledger.json --execute
+```
+
+then update `DEFAULT_ANCHOR_TX` / `EXPECTED_FINAL_*` in `anchorConfig.ts`.
 
 ## Tests
 
