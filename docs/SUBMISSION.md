@@ -1,6 +1,7 @@
 # Consent Guard — 제출 초안 / Submission draft
 
 Nesa.ai x 블록체인밸리 해커톤, 트랙 2 ("Building AI through Privacy").
+저장소 / Repository: https://github.com/tmdry4530/consent-guard
 이 문서는 제출용 초안이며, 모든 수치와 명령은 저장소 내용([README](../README.md), [발표 런북](RUNBOOK.md), 각 패키지 README, 소스, `fixtures/`)에서 가져왔습니다.
 This is a submission draft; every number and command comes from the repo ([README](../README.md), [presentation runbook](RUNBOOK.md), package READMEs, sources, `fixtures/`).
 

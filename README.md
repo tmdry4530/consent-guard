@@ -4,6 +4,8 @@
 
 AI 에이전트가 개인 데이터에 접근할 때 **동의된 필드만, 동의된 용도·기간에만** 넘기는 동의 게이트웨이.
 
+저장소: https://github.com/tmdry4530/consent-guard
+
 ## 실행 방법
 
 Node **23.6 이상** (루트 `.nvmrc`, `engines`; TypeScript를 type stripping으로 직접 실행, 빌드 단계 없음). Node 24.22에서 확인.
