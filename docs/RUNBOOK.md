@@ -32,10 +32,8 @@ npm run demo:cli     # 한글 사유가 나오고 끝에 "chain verified: OK"
 공개 RPC로 `read_anchor`만 읽는다. 키 없음, 쓰기 없음.
 
 ```bash
-npm run dev          # http://127.0.0.1:5173/ 또는 http://localhost:5173/
+npm run dev          # http://localhost:5173/  # IPv4가 필요하면 `npm run dev -- --host 127.0.0.1`
 # 빌드본을 쓰려면: npm run build && npm run preview   # http://127.0.0.1:4173/
-# 기본 Vite는 환경에 따라 localhost를 IPv6(::1)만 들을 수 있다. 127.0.0.1로 열려면:
-#   npm run dev -- --host 127.0.0.1
 ```
 
 브라우저를 1280×800에 가깝게 두고 다섯 장면을 진행한다.
@@ -60,7 +58,7 @@ npm run dev          # http://127.0.0.1:5173/ 또는 http://localhost:5173/
 주소 끝에 `?mock=1`만 붙인다. 다시 빌드할 필요 없다.
 
 ```text
-http://127.0.0.1:5173/?mock=1
+http://localhost:5173/?mock=1
 ```
 
 개발 서버를 목으로 띄우려면 `VITE_ANCHOR_MOCK=1 npm run dev`.
